@@ -9,6 +9,10 @@ type Draft struct {
 	// as expected_draft_date to replace this exact draft and nothing newer.
 	Date         string `json:"date"`
 	ReplyToMsgID int    `json:"reply_to_msg_id,omitempty"`
+	// ReplyToTopID is Telegram's top_msg_id on the draft's reply target. It is
+	// shown so the exact stored shape can be compared with what the official
+	// apps write.
+	ReplyToTopID int `json:"reply_to_top_id,omitempty"`
 }
 
 // DraftOf returns nil when there is no draft with text in it.
@@ -21,6 +25,9 @@ func DraftOf(d tg.DraftMessageClass) *Draft {
 	if rt, ok := m.GetReplyTo(); ok {
 		if r, ok := rt.(*tg.InputReplyToMessage); ok {
 			out.ReplyToMsgID = r.ReplyToMsgID
+			if top, ok := r.GetTopMsgID(); ok {
+				out.ReplyToTopID = top
+			}
 		}
 	}
 	return out

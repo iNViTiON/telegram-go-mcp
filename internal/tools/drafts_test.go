@@ -297,3 +297,46 @@ func TestReplyInsideATopicSetsBothIds(t *testing.T) {
 		t.Errorf("reply to the topic root must not set top_msg_id: %+v", rt)
 	}
 }
+
+func TestListDraftsShowsStoredShapeVerbatim(t *testing.T) {
+	root := &tg.InputReplyToMessage{ReplyToMsgID: 4367}
+	root.SetTopMsgID(4367)
+	inTopic := &tg.DraftMessage{Message: "in a topic", Date: 1700000100}
+	inTopic.SetReplyTo(root)
+
+	s := &stub{
+		dialogs: func(*tg.MessagesGetDialogsRequest) tg.MessagesDialogsClass { return dialogsFixture() },
+		allDrafts: &tg.Updates{
+			Chats: []tg.ChatClass{&tg.Channel{ID: 100, AccessHash: 22, Title: "Dev Group", Forum: true}},
+			Updates: []tg.UpdateClass{
+				func() tg.UpdateClass {
+					u := &tg.UpdateDraftMessage{Peer: &tg.PeerChannel{ChannelID: 100}, Draft: inTopic}
+					u.SetTopMsgID(4367)
+					return u
+				}(),
+				&tg.UpdateDraftMessage{Peer: &tg.PeerUser{UserID: 1}, Draft: &tg.DraftMessage{Message: "plain", Date: 1700000200}},
+				&tg.UpdateDraftMessage{Peer: &tg.PeerUser{UserID: 1}, Draft: &tg.DraftMessageEmpty{}}, // no text: skipped
+				&tg.UpdateNewMessage{}, // not a draft: skipped
+			},
+		},
+	}
+	h := newHarness(t, s, nil)
+	out := decode[ListDraftsOut](t, h.call(t, "list_drafts", map[string]any{}))
+
+	if seq(h) != "messages.getAllDrafts" {
+		t.Errorf("list_drafts issued %s", seq(h))
+	}
+	if len(out.Drafts) != 2 {
+		t.Fatalf("got %+v", out.Drafts)
+	}
+	d := out.Drafts[0]
+	if d.ChatID != "channel:100" || d.Chat != "Dev Group" || d.TopicID != 4367 || d.Draft.Text != "in a topic" {
+		t.Errorf("topic draft entry wrong: %+v", d)
+	}
+	if d.Draft.ReplyToMsgID != 4367 || d.Draft.ReplyToTopID != 4367 {
+		t.Errorf("reply fields must be shown exactly as stored, got reply_to=%d top=%d", d.Draft.ReplyToMsgID, d.Draft.ReplyToTopID)
+	}
+	if p := out.Drafts[1]; p.ChatID != "user:1" || p.TopicID != 0 || p.Draft.Text != "plain" {
+		t.Errorf("plain draft entry wrong: %+v", p)
+	}
+}

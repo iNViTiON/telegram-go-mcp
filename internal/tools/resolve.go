@@ -15,9 +15,11 @@ import (
 
 // chat is a resolved chat_id: everything a handler needs to address it.
 type chat struct {
-	Input tg.InputPeerClass
-	Title string
-	Forum bool // supergroup with topics
+	Input    tg.InputPeerClass
+	Title    string
+	Forum    bool   // supergroup with topics
+	Key      string // kind-prefixed id; empty for Saved Messages
+	Username string
 }
 
 // resolve turns a chat_id into a peer. A kind-prefixed id must already be known
@@ -45,12 +47,12 @@ func (t *Tools) resolve(ctx context.Context, raw string) (chat, error) {
 		if !ok {
 			return chat{}, errors.New("Telegram resolved that username but returned no usable chat; try list_chats")
 		}
-		return chat{Input: e.InputPeer(), Title: e.Title, Forum: e.Forum}, nil
+		return chat{Input: e.InputPeer(), Title: e.Title, Forum: e.Forum, Key: e.Key, Username: e.Username}, nil
 	}
 
 	e, ok := t.peers.Lookup(ref.Key)
 	if !ok {
 		return chat{}, fmt.Errorf("unknown chat %q: call list_chats first so the server learns it, or use @username", ref.Key)
 	}
-	return chat{Input: e.InputPeer(), Title: e.Title, Forum: e.Forum}, nil
+	return chat{Input: e.InputPeer(), Title: e.Title, Forum: e.Forum, Key: e.Key, Username: e.Username}, nil
 }

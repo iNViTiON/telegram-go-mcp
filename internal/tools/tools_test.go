@@ -27,6 +27,10 @@ type stub struct {
 	users   []tg.UserClass
 	lastReq *tg.MessagesGetDialogsRequest
 
+	msgs        func() tg.MessagesMessagesClass
+	history     []*tg.MessagesGetHistoryRequest
+	replies     []*tg.MessagesGetRepliesRequest
+	searches    []*tg.MessagesSearchRequest
 	misplace    bool // simulate Telegram accepting a draft but storing it in a slot nobody reads
 	drafts      map[string]*tg.DraftMessage
 	topicTitles map[int]string
@@ -86,6 +90,24 @@ func (s *stub) Invoke(_ context.Context, in bin.Encoder, out bin.Decoder) error 
 	case *tg.UsersGetUsersRequest:
 		if s.users != nil {
 			out.(*tg.UserClassVector).Elems = s.users
+			return nil
+		}
+	case *tg.MessagesGetHistoryRequest:
+		s.history = append(s.history, r)
+		if s.msgs != nil {
+			out.(*tg.MessagesMessagesBox).Messages = s.msgs()
+			return nil
+		}
+	case *tg.MessagesGetRepliesRequest:
+		s.replies = append(s.replies, r)
+		if s.msgs != nil {
+			out.(*tg.MessagesMessagesBox).Messages = s.msgs()
+			return nil
+		}
+	case *tg.MessagesSearchRequest:
+		s.searches = append(s.searches, r)
+		if s.msgs != nil {
+			out.(*tg.MessagesMessagesBox).Messages = s.msgs()
 			return nil
 		}
 	case *tg.MessagesGetPeerDialogsRequest:
@@ -227,7 +249,7 @@ func TestToolSurface(t *testing.T) {
 		}
 	}
 	sort.Strings(names)
-	if got, want := strings.Join(names, ","), "list_chats,list_topics,save_draft,whoami"; got != want {
+	if got, want := strings.Join(names, ","), "list_chats,list_topics,read_messages,read_thread,save_draft,search_messages,whoami"; got != want {
 		t.Fatalf("tools = %s, want %s", got, want)
 	}
 	// Exactly one tool may be non-read-only, and it must be the draft saver.

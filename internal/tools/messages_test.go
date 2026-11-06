@@ -1,10 +1,14 @@
 package tools
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/gotd/td/tg"
+	"github.com/gotd/td/tgerr"
+
+	"github.com/hisoft/telegram-go-mcp/internal/model"
 )
 
 func chPeer() *tg.PeerChannel { return &tg.PeerChannel{ChannelID: 100} }
@@ -152,13 +156,13 @@ func TestReadGeneralFiltersTheOverallHistory(t *testing.T) {
 	}
 }
 
-func TestPagingCursorFollowsTelegramNotTheFilter(t *testing.T) {
+func TestShortPageMeansTheHistoryEnded(t *testing.T) {
 	h, _ := withMessages(t)
-	// 7 entries come back. Even when filtering keeps only 3, the cursor must come
-	// from everything Telegram returned, or paging would skip messages.
+	// General is scanned in pages of 100. Telegram returns 7 entries, a short page,
+	// so there is nothing older: no cursor, and nothing was skipped.
 	out := decode[MessagesOut](t, h.call(t, "read_messages", map[string]any{"chat_id": "channel:100", "topic_id": 1, "limit": 7}))
-	if len(out.Messages) != 3 || out.NextBeforeID != 23 {
-		t.Errorf("kept %d messages, next_before_id=%d (want 3 and 23)", len(out.Messages), out.NextBeforeID)
+	if len(out.Messages) != 3 || out.NextBeforeID != 0 {
+		t.Errorf("kept %d messages, next_before_id=%d (want 3 and 0)", len(out.Messages), out.NextBeforeID)
 	}
 	// A page that is not full has no older neighbour.
 	out = decode[MessagesOut](t, h.call(t, "read_messages", map[string]any{"chat_id": "channel:100", "limit": 50}))
@@ -278,5 +282,150 @@ func TestMessageReadersIssueOnlyReads(t *testing.T) {
 	}
 	if len(h.denied) != 0 || len(s.saves) != 0 {
 		t.Errorf("denied=%v saves=%d", h.denied, len(s.saves))
+	}
+}
+
+// longHistory is a forum of 'total' messages, newest first, whose General
+// messages are exactly the ids in general; every other message is in topic 5.
+// It honours offset_id and limit like Telegram does.
+func longHistory(total int, general ...int) func(offsetID, n int) tg.MessagesMessagesClass {
+	isGeneral := map[int]bool{}
+	for _, id := range general {
+		isGeneral[id] = true
+	}
+	return func(offsetID, n int) tg.MessagesMessagesClass {
+		start := total
+		if offsetID > 0 && offsetID-1 < start {
+			start = offsetID - 1 // strictly older than offset_id
+		}
+		var msgs []tg.MessageClass
+		for id := start; id >= 1 && len(msgs) < n; id-- {
+			var hdr *tg.MessageReplyHeader
+			if !isGeneral[id] {
+				hdr = &tg.MessageReplyHeader{ForumTopic: true, ReplyToMsgID: 5}
+			}
+			msgs = append(msgs, forumMsg(id, 1700000000+id, "m", &tg.PeerUser{UserID: 1}, hdr))
+		}
+		return &tg.MessagesMessages{
+			Messages: msgs,
+			Chats:    []tg.ChatClass{&tg.Channel{ID: 100, AccessHash: 22, Title: "Dev Group", Megagroup: true, Forum: true}},
+			Users:    []tg.UserClass{&tg.User{ID: 1, AccessHash: 11, FirstName: "Alice"}},
+		}
+	}
+}
+
+func ids(ms []model.Message) []int {
+	var out []int
+	for _, m := range ms {
+		out = append(out, m.ID)
+	}
+	return out
+}
+
+// Seen live: the newest 20 messages of a busy forum all belong to other topics,
+// so a single page of General was empty. The scan must keep going.
+func TestGeneralKeepsScanningUntilItHasEnough(t *testing.T) {
+	h, s := learned(t)
+	s.msgsFor = longHistory(1000, 950, 850, 750, 20)
+
+	out := decode[MessagesOut](t, h.call(t, "read_messages", map[string]any{"chat_id": "channel:100", "topic_id": 1, "limit": 3}))
+
+	if got := ids(out.Messages); fmt.Sprint(got) != "[950 850 750]" {
+		t.Errorf("General messages = %v, want [950 850 750]", got)
+	}
+	if len(s.history) != 3 {
+		t.Fatalf("scanned with %d requests, want 3", len(s.history))
+	}
+	for i, wantOffset := range []int{0, 901, 801} {
+		if s.history[i].OffsetID != wantOffset || s.history[i].Limit != maxMsgLimit {
+			t.Errorf("request %d: offset_id=%d limit=%d, want offset_id=%d limit=%d", i, s.history[i].OffsetID, s.history[i].Limit, wantOffset, maxMsgLimit)
+		}
+	}
+	if out.NextBeforeID != 701 { // the oldest message of the last page Telegram returned
+		t.Errorf("next_before_id = %d, want 701", out.NextBeforeID)
+	}
+}
+
+func TestGeneralScanIsBoundedAndResumable(t *testing.T) {
+	h, s := learned(t)
+	s.msgsFor = longHistory(1000, 950, 20)
+
+	// 600 messages with nothing in General: the budget (5 requests) runs out.
+	out := decode[MessagesOut](t, h.call(t, "read_messages",
+		map[string]any{"chat_id": "channel:100", "topic_id": 1, "limit": 3, "before_id": 700}))
+	if len(out.Messages) != 0 || len(s.history) != generalScanRequests || out.NextBeforeID != 200 {
+		t.Fatalf("messages=%d requests=%d next_before_id=%d, want 0, %d, 200", len(out.Messages), len(s.history), out.NextBeforeID, generalScanRequests)
+	}
+
+	// Resuming from that cursor reaches the end of the history and finds the last one.
+	s.history = nil
+	out = decode[MessagesOut](t, h.call(t, "read_messages",
+		map[string]any{"chat_id": "channel:100", "topic_id": 1, "limit": 3, "before_id": out.NextBeforeID}))
+	if got := ids(out.Messages); fmt.Sprint(got) != "[20]" || out.NextBeforeID != 0 {
+		t.Errorf("resumed: messages %v next_before_id=%d, want [20] and 0 (history ended)", got, out.NextBeforeID)
+	}
+}
+
+// If one page holds more General messages than asked for, the extras are
+// dropped and the cursor is the oldest one kept, so the next call neither
+// skips nor repeats any.
+func TestGeneralTruncationNeverSkipsOrRepeats(t *testing.T) {
+	h, s := learned(t)
+	s.msgsFor = longHistory(1000, 990, 985, 980, 975)
+
+	first := decode[MessagesOut](t, h.call(t, "read_messages", map[string]any{"chat_id": "channel:100", "topic_id": 1, "limit": 2}))
+	if fmt.Sprint(ids(first.Messages)) != "[990 985]" || first.NextBeforeID != 985 {
+		t.Fatalf("first page: %v next_before_id=%d, want [990 985] and 985", ids(first.Messages), first.NextBeforeID)
+	}
+	second := decode[MessagesOut](t, h.call(t, "read_messages",
+		map[string]any{"chat_id": "channel:100", "topic_id": 1, "limit": 2, "before_id": first.NextBeforeID}))
+	if fmt.Sprint(ids(second.Messages)) != "[980 975]" {
+		t.Errorf("second page = %v, want [980 975]", ids(second.Messages))
+	}
+}
+
+func TestSearchInGeneralScansToo(t *testing.T) {
+	h, s := learned(t)
+	s.msgsFor = longHistory(1000, 950, 850, 750)
+
+	out := decode[MessagesOut](t, h.call(t, "search_messages",
+		map[string]any{"chat_id": "channel:100", "query": "hello", "topic_id": 1, "limit": 3}))
+	if fmt.Sprint(ids(out.Messages)) != "[950 850 750]" || len(s.searches) != 3 {
+		t.Errorf("messages %v after %d search requests, want [950 850 750] after 3", ids(out.Messages), len(s.searches))
+	}
+	for i, r := range s.searches {
+		if r.Q != "hello" {
+			t.Errorf("search request %d lost the query: %q", i, r.Q)
+		}
+	}
+	if len(s.history) != 0 {
+		t.Errorf("a search must not read the history: %d getHistory requests", len(s.history))
+	}
+}
+
+// Seen live: in a forum, getReplies on an ordinary message is TOPIC_ID_INVALID.
+func TestReadThreadInAForumExplainsInsteadOfFailing(t *testing.T) {
+	h, s := learned(t)
+	s.repliesErr = tgerr.New(400, "TOPIC_ID_INVALID")
+
+	res := h.call(t, "read_thread", map[string]any{"chat_id": "channel:100", "message_id": 8155})
+	if !res.IsError {
+		t.Fatal("want an error")
+	}
+	for _, want := range []string{"forum", "read_messages", "topic_id"} {
+		if !strings.Contains(text(res), want) {
+			t.Errorf("the explanation should mention %q: %q", want, text(res))
+		}
+	}
+	if strings.Contains(text(res), "TOPIC_ID_INVALID") {
+		t.Errorf("the raw Telegram code should not be all the model gets: %q", text(res))
+	}
+
+	// Outside a forum the same code keeps its generic message.
+	h, s = learned(t)
+	s.repliesErr = tgerr.New(400, "TOPIC_ID_INVALID")
+	res = h.call(t, "read_thread", map[string]any{"chat_id": "user:1", "message_id": 5})
+	if !res.IsError || !strings.Contains(text(res), "rejected") {
+		t.Errorf("a non-forum chat should get the generic message, got %q", text(res))
 	}
 }

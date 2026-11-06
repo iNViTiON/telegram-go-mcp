@@ -28,6 +28,8 @@ type stub struct {
 	lastReq *tg.MessagesGetDialogsRequest
 
 	msgs        func() tg.MessagesMessagesClass
+	msgsFor     func(offsetID, n int) tg.MessagesMessagesClass // pages that honour offset_id and limit
+	repliesErr  error
 	history     []*tg.MessagesGetHistoryRequest
 	replies     []*tg.MessagesGetRepliesRequest
 	searches    []*tg.MessagesSearchRequest
@@ -94,18 +96,29 @@ func (s *stub) Invoke(_ context.Context, in bin.Encoder, out bin.Decoder) error 
 		}
 	case *tg.MessagesGetHistoryRequest:
 		s.history = append(s.history, r)
+		if s.msgsFor != nil {
+			out.(*tg.MessagesMessagesBox).Messages = s.msgsFor(r.OffsetID, r.Limit)
+			return nil
+		}
 		if s.msgs != nil {
 			out.(*tg.MessagesMessagesBox).Messages = s.msgs()
 			return nil
 		}
 	case *tg.MessagesGetRepliesRequest:
 		s.replies = append(s.replies, r)
+		if s.repliesErr != nil {
+			return s.repliesErr
+		}
 		if s.msgs != nil {
 			out.(*tg.MessagesMessagesBox).Messages = s.msgs()
 			return nil
 		}
 	case *tg.MessagesSearchRequest:
 		s.searches = append(s.searches, r)
+		if s.msgsFor != nil {
+			out.(*tg.MessagesMessagesBox).Messages = s.msgsFor(r.OffsetID, r.Limit)
+			return nil
+		}
 		if s.msgs != nil {
 			out.(*tg.MessagesMessagesBox).Messages = s.msgs()
 			return nil

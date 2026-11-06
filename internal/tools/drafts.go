@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 	"unicode/utf8"
 
@@ -64,10 +65,10 @@ func (t *Tools) saveDraft(ctx context.Context, _ *mcp.CallToolRequest, in SaveDr
 	}
 	// A guessed placement is the worst outcome, so never guess.
 	if c.Forum && in.TopicID == 0 {
-		return nil, out, fmt.Errorf("%s has topics: pass topic_id (1 is General). Use list_topics to see them", c.Title)
+		return nil, out, fmt.Errorf("%q has topics: pass topic_id (1 is General). Use list_topics to see them", c.Title)
 	}
 	if !c.Forum && in.TopicID != 0 {
-		return nil, out, fmt.Errorf("%s has no topics, so topic_id does not apply", c.Title)
+		return nil, out, fmt.Errorf("%q has no topics, so topic_id does not apply", c.Title)
 	}
 
 	cur, topicTitle, err := t.readDraft(ctx, c, in.TopicID)
@@ -85,11 +86,11 @@ func (t *Tools) saveDraft(ctx context.Context, _ *mcp.CallToolRequest, in SaveDr
 	// widen it: the checks run first and return before saveDraft.
 	switch {
 	case in.Clear && prev == nil:
-		out.Note = "There is no draft to clear in " + out.Where + ". Nothing changed."
+		out.Note = "There is no draft to clear in " + strconv.Quote(out.Where) + ". Nothing changed."
 		return nil, out, nil
 	case !in.Clear && prev != nil && prev.Text == in.Text:
 		out.Draft = prev
-		out.Note = "An identical draft is already in " + out.Where + ". Nothing changed."
+		out.Note = "An identical draft is already in " + strconv.Quote(out.Where) + ". Nothing changed."
 		return nil, out, nil
 	case prev != nil:
 		if err := checkMayReplace(prev, in, out.Where); err != nil {
@@ -117,16 +118,16 @@ func (t *Tools) saveDraft(ctx context.Context, _ *mcp.CallToolRequest, in SaveDr
 	// accepted can still be stored somewhere other than where it was checked.
 	switch {
 	case in.Clear && out.Draft != nil:
-		return nil, out, fmt.Errorf("asked Telegram to delete the draft in %s but it is still there: %q. Tell the user it was not deleted", out.Where, out.Draft.Text)
+		return nil, out, fmt.Errorf("asked Telegram to delete the draft in %q but it is still there: %q. Tell the user it was not deleted", out.Where, out.Draft.Text)
 	case !in.Clear && (out.Draft == nil || out.Draft.Text != in.Text):
-		return nil, out, fmt.Errorf("Telegram accepted the draft but it did not appear in %s when read back, so it may have been stored somewhere else "+
+		return nil, out, fmt.Errorf("Telegram accepted the draft but it did not appear in %q when read back, so it may have been stored somewhere else "+
 			"(for example as a chat-level draft). Do NOT tell the user it is saved there. Ask them to look in that chat, and to delete any stray draft", out.Where)
 	}
 	out.Saved = true
 	if in.Clear {
-		out.Note = "Draft deleted from " + out.Where + "."
+		out.Note = "Draft deleted from " + strconv.Quote(out.Where) + "."
 	} else {
-		out.Note = "Saved as a draft. Nothing was sent. The user can review and send it from the Telegram app, in " + out.Where + "."
+		out.Note = "Saved as a draft. Nothing was sent. The user can review and send it from the Telegram app, in " + strconv.Quote(out.Where) + "."
 	}
 	return nil, out, nil
 }
@@ -141,14 +142,14 @@ func checkMayReplace(prev *model.Draft, in SaveDraftIn, where string) error {
 		}
 		have, _ := time.Parse(time.RFC3339, prev.Date)
 		if want.Unix() != have.Unix() {
-			return fmt.Errorf("the draft in %s changed since you read it (now dated %s): %q. Show it to the user before replacing it", where, prev.Date, prev.Text)
+			return fmt.Errorf("the draft in %q changed since you read it (now dated %s): %q. Show it to the user before replacing it", where, prev.Date, prev.Text)
 		}
 		return nil
 	}
 	if in.Overwrite {
 		return nil
 	}
-	return fmt.Errorf("%s already has a draft the user may be typing (dated %s): %q. "+
+	return fmt.Errorf("%q already has a draft the user may be typing (dated %s): %q. "+
 		"Nothing was changed. Ask the user; to replace exactly this draft call again with expected_draft_date=%q, "+
 		"or with overwrite=true if they agree to lose it", where, prev.Date, prev.Text, prev.Date)
 }
@@ -198,7 +199,7 @@ func (t *Tools) readDraft(ctx context.Context, c chat, topicID int) (tg.DraftMes
 				return tp.Draft, tp.Title, nil
 			}
 		}
-		return nil, "", fmt.Errorf("topic %d does not exist in %s. Use list_topics", topicID, c.Title)
+		return nil, "", fmt.Errorf("topic %d does not exist in %q. Use list_topics", topicID, c.Title)
 	}
 
 	res, err := t.API.MessagesGetPeerDialogs(ctx, []tg.InputDialogPeerClass{&tg.InputDialogPeer{Peer: c.Input}})

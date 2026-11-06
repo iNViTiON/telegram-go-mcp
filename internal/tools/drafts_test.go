@@ -120,7 +120,7 @@ func TestRefusalsNeverReachSaveDraft(t *testing.T) {
 		want string // text the model must be given
 	}{
 		{"forum chat without topic_id", saveArgs("chat_id", "channel:100", "text", "x"), nil, "pass topic_id"},
-		{"topic_id on a chat without topics", saveArgs("chat_id", "user:1", "topic_id", 3, "text", "x"), nil, "has no topics"},
+		{"topic_id on a chat without topics", saveArgs("chat_id", "user:1", "topic_id", 3, "text", "x"), nil, `"Alice" has no topics`},
 		{"empty text without clear", saveArgs("chat_id", "me"), nil, "clear=true"},
 		{"clear together with text", saveArgs("chat_id", "me", "text", "x", "clear", true), nil, "text must be empty"},
 		{"text over 4096", saveArgs("chat_id", "me", "text", strings.Repeat("é", 4097)), nil, "at most 4096"},

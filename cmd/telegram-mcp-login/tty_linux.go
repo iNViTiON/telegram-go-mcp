@@ -100,7 +100,7 @@ func (t *ttyAuth) readSecret(ctx context.Context, prompt string) (string, error)
 }
 
 func (t *ttyAuth) Phone(ctx context.Context) (string, error) {
-	return t.readLine(ctx, "Phone number with country code (e.g. +84901234567): ")
+	return t.readLine(ctx, "Phone number with country code (e.g. +10000000000): ")
 }
 
 // Code is echoed on purpose: it is short-lived and also visible in your own

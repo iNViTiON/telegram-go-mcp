@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"errors"
+	"strconv"
 
 	"github.com/gotd/td/telegram/message/peer"
 	"github.com/gotd/td/tg"
@@ -42,7 +43,7 @@ func (t *Tools) listTopics(ctx context.Context, _ *mcp.CallToolRequest, in ListT
 	}
 	out.Chat = c.Title
 	if !c.Forum {
-		return nil, out, errors.New(c.Title + " has no topics (it is not a forum supergroup)")
+		return nil, out, errors.New(strconv.Quote(c.Title) + " has no topics (it is not a forum supergroup)")
 	}
 
 	limit := in.Limit

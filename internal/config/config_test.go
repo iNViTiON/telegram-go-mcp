@@ -137,3 +137,19 @@ func TestAuditFromEnv(t *testing.T) {
 		t.Fatalf("unexpected audit output: %q", got)
 	}
 }
+
+func TestCheckPrivateRejectsFileOwnedBySomeoneElse(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "secret")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckPrivate(path); err != nil {
+		t.Fatalf("own 0600 file must pass: %v", err)
+	}
+	real := getuid
+	getuid = func() int { return real() + 1 }
+	defer func() { getuid = real }()
+	if err := CheckPrivate(path); !errors.Is(err, ErrInsecurePermissions) {
+		t.Fatalf("a file owned by another uid must be refused, got %v", err)
+	}
+}

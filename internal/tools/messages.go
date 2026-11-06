@@ -68,7 +68,7 @@ func (t *Tools) readMessages(ctx context.Context, _ *mcp.CallToolRequest, in Rea
 			return nil, out, errors.New("topic_id must be positive")
 		}
 		if !c.Forum {
-			return nil, out, fmt.Errorf("%s has no topics, so topic_id does not apply", c.Title)
+			return nil, out, fmt.Errorf("%q has no topics, so topic_id does not apply", c.Title)
 		}
 		out.TopicID = in.TopicID
 	}
@@ -180,7 +180,7 @@ func (t *Tools) searchMessages(ctx context.Context, _ *mcp.CallToolRequest, in S
 	out.Chat = c.Title
 	if in.TopicID != 0 {
 		if !c.Forum {
-			return nil, out, fmt.Errorf("%s has no topics, so topic_id does not apply", c.Title)
+			return nil, out, fmt.Errorf("%q has no topics, so topic_id does not apply", c.Title)
 		}
 		out.TopicID = in.TopicID
 	}

@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 const appDir = "telegram-go-mcp"
@@ -66,7 +67,8 @@ type Credentials struct {
 // ErrInsecurePermissions is returned when a secret file is group/world accessible.
 var ErrInsecurePermissions = errors.New("file permissions too open")
 
-// CheckPrivate fails unless path is accessible by its owner only.
+// CheckPrivate fails unless path is owned by the current user and accessible
+// by its owner only.
 func CheckPrivate(path string) error {
 	st, err := os.Stat(path)
 	if err != nil {
@@ -74,6 +76,11 @@ func CheckPrivate(path string) error {
 	}
 	if perm := st.Mode().Perm(); perm&0o077 != 0 {
 		return fmt.Errorf("%w: %s is %#o, run: chmod 600 %s", ErrInsecurePermissions, path, perm, path)
+	}
+	// A private mode means nothing if someone else owns the file: they can
+	// read it, or chmod it open later.
+	if sys, ok := st.Sys().(*syscall.Stat_t); ok && int(sys.Uid) != getuid() {
+		return fmt.Errorf("%w: %s is owned by uid %d, not by you (uid %d)", ErrInsecurePermissions, path, sys.Uid, getuid())
 	}
 	return nil
 }
@@ -190,3 +197,6 @@ func NewAuditLogger(w io.Writer) func(method string, allowed bool) {
 		fmt.Fprintf(w, "audit: %s %s\n", verdict, method)
 	}
 }
+
+// getuid is swapped in tests to stand for a different user.
+var getuid = os.Getuid

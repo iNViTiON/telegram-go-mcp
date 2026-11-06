@@ -22,11 +22,11 @@ func pipeAuth(t *testing.T) (*ttyAuth, *os.File) {
 
 func TestReadLineReturnsInput(t *testing.T) {
 	a, w := pipeAuth(t)
-	if _, err := w.WriteString("  +84901234567 \n"); err != nil {
+	if _, err := w.WriteString("  +10000000000 \n"); err != nil {
 		t.Fatal(err)
 	}
 	got, err := a.readLine(context.Background(), "phone: ")
-	if err != nil || got != "+84901234567" {
+	if err != nil || got != "+10000000000" {
 		t.Fatalf("got %q, %v", got, err)
 	}
 }

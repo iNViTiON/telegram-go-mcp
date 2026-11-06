@@ -245,13 +245,13 @@ func TestMessageReadersRefuseBadInputWithoutAnyRequest(t *testing.T) {
 	}{
 		{"unknown chat", "read_messages", map[string]any{"chat_id": "channel:999"}, "list_chats"},
 		{"malformed chat", "read_messages", map[string]any{"chat_id": "nope"}, "invalid chat_id"},
-		{"topic in a chat without topics", "read_messages", map[string]any{"chat_id": "user:1", "topic_id": 2}, "has no topics"},
+		{"topic in a chat without topics", "read_messages", map[string]any{"chat_id": "user:1", "topic_id": 2}, `"Alice" has no topics`},
 		{"negative topic", "read_messages", map[string]any{"chat_id": "channel:100", "topic_id": -3}, "must be positive"},
 		{"negative limit", "read_messages", map[string]any{"chat_id": "channel:100", "limit": -1}, "must not be negative"},
 		{"thread without a message", "read_thread", map[string]any{"chat_id": "channel:100"}, "message_id"}, // the schema rejects it before the handler runs
 		{"empty query", "search_messages", map[string]any{"chat_id": "channel:100", "query": "   "}, "query is empty"},
 		{"huge query", "search_messages", map[string]any{"chat_id": "channel:100", "query": strings.Repeat("x", 300)}, "longer than"},
-		{"search topic in a chat without topics", "search_messages", map[string]any{"chat_id": "user:1", "query": "x", "topic_id": 2}, "has no topics"},
+		{"search topic in a chat without topics", "search_messages", map[string]any{"chat_id": "user:1", "query": "x", "topic_id": 2}, `"Alice" has no topics`},
 	}
 	for _, c := range cases {
 		h, _ := withMessages(t)

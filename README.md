@@ -149,7 +149,8 @@ Guards, all checked before anything is written:
 - If the chat or topic already has a draft, the call is **refused** and shows you the existing text. Replace it only with `overwrite=true`, or with `expected_draft_date` set to the date of the draft that was seen, which refuses if it changed since.
 - Empty text deletes a draft, so it needs `clear=true` and the same permission to replace.
 - Text over 4096 characters is refused.
-- After saving, the draft is read back and returned together with where to look, e.g. `Dev Group › Frontend`.
+- After saving, the draft is read back and returned together with where to look, e.g. `Dev Group › Frontend`. A save is reported as done **only if the read-back confirms it**. If Telegram accepts a draft but it cannot be found where it should be, the tool returns an error saying so, instead of claiming success.
+- A draft in a topic is addressed the way the official app does it, found by reading drafts typed by hand: no message replied to, `top_msg_id` set to the topic. The two other shapes tried (topic id as the reply target, or the sending docs' rule) either showed a reply bar or were lost.
 
 Caveat: the official apps push a draft you are still typing to Telegram only after a short delay, so a draft typed seconds ago may not be visible to the check yet. The compare-and-swap narrows that race but cannot close it.
 

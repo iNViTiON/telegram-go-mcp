@@ -25,7 +25,7 @@ func Message(err error) string {
 	case errors.As(err, &denied):
 		return fmt.Sprintf("This server can only read Telegram and save drafts; %s is not permitted. This is a bug in the tool, not something to retry.", denied.Method)
 	case errors.Is(err, instancelock.ErrHeld):
-		return "Another telegram-mcp instance already holds the Telegram session, so this copy is disabled to avoid invalidating it. Use the other instance, or close it and restart this one."
+		return "Another telegram-mcp instance already holds the Telegram session and this copy could not reach it. Quit Claude Desktop fully from the tray and start it again."
 	case errors.Is(err, tgclient.ErrNotReady), errors.Is(err, context.DeadlineExceeded):
 		return "The Telegram connection is not ready yet. Try again in a few seconds."
 	case errors.Is(err, context.Canceled):

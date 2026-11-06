@@ -20,7 +20,7 @@ It replaces a third-party Python server that returned bare message text with no 
 
 Working and tested: `whoami`, `list_chats`, `list_topics`, `save_draft`, sign-in, the guard, and sharing one Telegram session between the several copies the desktop app starts.
 
-Message reading (`read_messages`, `read_thread`, `search_messages`) is tested offline only and has **not** been run against a real account yet.
+Message reading was checked live against one forum group (with the message text hidden from the checker): a single topic, the whole chat spread over six topics, paging back with `before_id`, and a search all returned correct topic ids, ISO dates, senders and real reply targets, newest first, with no overlap between pages. **Not yet checked live:** the General topic after it was changed to keep scanning, and `read_thread` outside a forum (in a forum it is rejected by Telegram, see below).
 
 `save_draft` has been checked end to end against a real account: a draft saved to Saved Messages and one into a forum topic both appeared in the official app, and the topic draft is stored exactly as the app stores a hand-typed one (no message replied to, `top_msg_id` set to the topic), so it shows no reply bar. Replacing by compare-and-swap, overwriting and clearing were each run live, and refusals left the existing draft untouched. **Not yet checked live:** a draft in a forum's General topic, and a draft you are still typing on another device (the apps sync those after a delay).
 
@@ -166,7 +166,8 @@ Every message carries its id, an RFC3339 UTC date, the sender, the forum topic i
 Things worth knowing:
 
 - Messages come **newest first**. Pass `next_before_id` back as `before_id` for older ones. The cursor follows what Telegram returned, so topic filtering cannot make paging skip messages.
-- A forum topic is read as a message thread. **General** is the chat's messages that belong to no other topic, so it is read from the overall history and filtered; a page can hold fewer than `limit`. Neither has been checked against a real account yet.
+- A forum topic is read as a message thread. **General** is the chat's messages that belong to no other topic, so it is found by scanning the chat's history in pages of 100. The first live try returned nothing because the newest 20 messages all belonged to other topics, so each call now keeps scanning, up to 5 requests, until it has `limit` messages. If the budget runs out it returns what it found with a `next_before_id`, so a call can come back short or even empty and the model should continue from the cursor.
+- **`read_thread` does not work inside a forum group.** Telegram rejects it with `TOPIC_ID_INVALID` because only a topic is a thread there; use `read_messages` with `topic_id`. It is for ordinary groups' reply threads and for the comments under a channel post.
 - Search covers one chat, not the whole account.
 - `link` is set only for messages of the channel being read. Comments on a channel post live in another chat and get none.
 - Message text is written by other people. The server tells the model to treat it as data, but that is a mitigation, not a guarantee, and a hostile message is the main way text could try to steer the assistant. The assistant still cannot send anything.

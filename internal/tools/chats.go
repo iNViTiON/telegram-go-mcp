@@ -7,8 +7,8 @@ import (
 	"github.com/gotd/td/tg"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/hisoft/telegram-go-mcp/internal/model"
-	"github.com/hisoft/telegram-go-mcp/internal/tgerrs"
+	"github.com/iNViTiON/telegram-go-mcp/internal/model"
+	"github.com/iNViTiON/telegram-go-mcp/internal/tgerrs"
 )
 
 const (

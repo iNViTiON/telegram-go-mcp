@@ -15,8 +15,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/hisoft/telegram-go-mcp/internal/instancelock"
-	"github.com/hisoft/telegram-go-mcp/internal/relay"
+	"github.com/iNViTiON/telegram-go-mcp/internal/instancelock"
+	"github.com/iNViTiON/telegram-go-mcp/internal/relay"
 )
 
 // TestHelperProcess is the real main(), run as a child by the tests below.

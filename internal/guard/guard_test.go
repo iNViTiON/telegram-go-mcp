@@ -14,8 +14,8 @@ import (
 	"github.com/gotd/td/bin"
 	"github.com/gotd/td/tg"
 
-	"github.com/hisoft/telegram-go-mcp/internal/guard"
-	"github.com/hisoft/telegram-go-mcp/internal/tgclient"
+	"github.com/iNViTiON/telegram-go-mcp/internal/guard"
+	"github.com/iNViTiON/telegram-go-mcp/internal/tgclient"
 )
 
 // wantRead is a SECOND, literal copy of the read policy. It is duplicated on

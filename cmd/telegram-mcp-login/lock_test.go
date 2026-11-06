@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hisoft/telegram-go-mcp/internal/instancelock"
+	"github.com/iNViTiON/telegram-go-mcp/internal/instancelock"
 )
 
 // TestHelperProcess runs the real main() as a child with args from the env.

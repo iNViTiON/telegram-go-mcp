@@ -24,10 +24,10 @@ import (
 	"github.com/gotd/td/telegram/auth"
 	"github.com/gotd/td/tg"
 
-	"github.com/hisoft/telegram-go-mcp/internal/config"
-	"github.com/hisoft/telegram-go-mcp/internal/guard"
-	"github.com/hisoft/telegram-go-mcp/internal/instancelock"
-	"github.com/hisoft/telegram-go-mcp/internal/tgclient"
+	"github.com/iNViTiON/telegram-go-mcp/internal/config"
+	"github.com/iNViTiON/telegram-go-mcp/internal/guard"
+	"github.com/iNViTiON/telegram-go-mcp/internal/instancelock"
+	"github.com/iNViTiON/telegram-go-mcp/internal/tgclient"
 )
 
 func main() {

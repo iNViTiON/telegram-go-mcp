@@ -6,7 +6,7 @@ import (
 
 	"github.com/gotd/td/tg"
 
-	"github.com/hisoft/telegram-go-mcp/internal/model"
+	"github.com/iNViTiON/telegram-go-mcp/internal/model"
 )
 
 const (

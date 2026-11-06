@@ -15,7 +15,7 @@ const (
 	pathTelegram = "github.com/gotd/td/telegram"
 	pathTG       = "github.com/gotd/td/tg"
 	pathAuth     = "github.com/gotd/td/telegram/auth"
-	pathGuard    = "github.com/hisoft/telegram-go-mcp/internal/guard"
+	pathGuard    = "github.com/iNViTiON/telegram-go-mcp/internal/guard"
 )
 
 // sibling invokers that would bypass the guard.

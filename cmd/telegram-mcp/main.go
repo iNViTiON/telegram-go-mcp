@@ -23,12 +23,12 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/hisoft/telegram-go-mcp/internal/config"
-	"github.com/hisoft/telegram-go-mcp/internal/guard"
-	"github.com/hisoft/telegram-go-mcp/internal/instancelock"
-	"github.com/hisoft/telegram-go-mcp/internal/relay"
-	"github.com/hisoft/telegram-go-mcp/internal/tgclient"
-	"github.com/hisoft/telegram-go-mcp/internal/tools"
+	"github.com/iNViTiON/telegram-go-mcp/internal/config"
+	"github.com/iNViTiON/telegram-go-mcp/internal/guard"
+	"github.com/iNViTiON/telegram-go-mcp/internal/instancelock"
+	"github.com/iNViTiON/telegram-go-mcp/internal/relay"
+	"github.com/iNViTiON/telegram-go-mcp/internal/tgclient"
+	"github.com/iNViTiON/telegram-go-mcp/internal/tools"
 )
 
 const (

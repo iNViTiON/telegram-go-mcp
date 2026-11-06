@@ -8,9 +8,9 @@ import (
 	"github.com/gotd/td/telegram/message/peer"
 	"github.com/gotd/td/tg"
 
-	"github.com/hisoft/telegram-go-mcp/internal/model"
-	"github.com/hisoft/telegram-go-mcp/internal/peercache"
-	"github.com/hisoft/telegram-go-mcp/internal/tgerrs"
+	"github.com/iNViTiON/telegram-go-mcp/internal/model"
+	"github.com/iNViTiON/telegram-go-mcp/internal/peercache"
+	"github.com/iNViTiON/telegram-go-mcp/internal/tgerrs"
 )
 
 // chat is a resolved chat_id: everything a handler needs to address it.

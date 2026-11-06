@@ -31,7 +31,7 @@ Linux only. The sign-in prompt and the instance lock use Linux-specific code, an
 You need Go 1.26.0 or newer (`go.mod` sets the floor). The binaries are fully static: no libc, no runtime dependencies, nothing resolved at start-up.
 
 ```bash
-git clone <this repo> ~/Documents/telegram-go-mcp
+git clone https://github.com/iNViTiON/telegram-go-mcp ~/Documents/telegram-go-mcp
 cd ~/Documents/telegram-go-mcp
 CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/ ./cmd/telegram-mcp ./cmd/telegram-mcp-login
 file bin/telegram-mcp    # should say: statically linked

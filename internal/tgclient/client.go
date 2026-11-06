@@ -13,7 +13,7 @@ import (
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/tg"
 
-	"github.com/hisoft/telegram-go-mcp/internal/guard"
+	"github.com/iNViTiON/telegram-go-mcp/internal/guard"
 )
 
 // Version is reported to Telegram as the app version.

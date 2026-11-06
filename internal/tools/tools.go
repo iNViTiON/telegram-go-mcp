@@ -10,8 +10,8 @@ import (
 	"github.com/gotd/td/tg"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/hisoft/telegram-go-mcp/internal/peercache"
-	"github.com/hisoft/telegram-go-mcp/internal/tgerrs"
+	"github.com/iNViTiON/telegram-go-mcp/internal/peercache"
+	"github.com/iNViTiON/telegram-go-mcp/internal/tgerrs"
 )
 
 const instructions = `Read-only access to the user's Telegram account, plus saving drafts.

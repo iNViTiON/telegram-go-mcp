@@ -8,7 +8,7 @@ import (
 	"github.com/gotd/td/tg"
 	"github.com/gotd/td/tgerr"
 
-	"github.com/hisoft/telegram-go-mcp/internal/model"
+	"github.com/iNViTiON/telegram-go-mcp/internal/model"
 )
 
 func chPeer() *tg.PeerChannel { return &tg.PeerChannel{ChannelID: 100} }

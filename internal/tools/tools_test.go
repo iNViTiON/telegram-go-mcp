@@ -13,8 +13,8 @@ import (
 	"github.com/gotd/td/tg"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/hisoft/telegram-go-mcp/internal/guard"
-	"github.com/hisoft/telegram-go-mcp/internal/tgclient"
+	"github.com/iNViTiON/telegram-go-mcp/internal/guard"
+	"github.com/iNViTiON/telegram-go-mcp/internal/tgclient"
 )
 
 var errStub = errors.New("stub transport: no canned answer")

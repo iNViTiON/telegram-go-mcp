@@ -8,9 +8,9 @@ import (
 
 	"github.com/gotd/td/tgerr"
 
-	"github.com/hisoft/telegram-go-mcp/internal/guard"
-	"github.com/hisoft/telegram-go-mcp/internal/instancelock"
-	"github.com/hisoft/telegram-go-mcp/internal/tgclient"
+	"github.com/iNViTiON/telegram-go-mcp/internal/guard"
+	"github.com/iNViTiON/telegram-go-mcp/internal/instancelock"
+	"github.com/iNViTiON/telegram-go-mcp/internal/tgclient"
 )
 
 func TestMessage(t *testing.T) {

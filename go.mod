@@ -1,4 +1,4 @@
-module github.com/hisoft/telegram-go-mcp
+module github.com/iNViTiON/telegram-go-mcp
 
 go 1.26.0
 

@@ -25,9 +25,6 @@ type SaveDraftIn struct {
 	Overwrite         bool   `json:"overwrite,omitempty" jsonschema:"replace an existing draft. Only after the user agreed: it deletes what they were typing"`
 	ExpectedDraftDate string `json:"expected_draft_date,omitempty" jsonschema:"the date of the existing draft you saw, to replace exactly that draft and nothing newer"`
 	Clear             bool   `json:"clear,omitempty" jsonschema:"delete the draft instead of saving one; text must be empty"`
-	// TEMPORARY: lets the topic draft shape be tried live without a rebuild per guess.
-	// Remove once the shape the official apps use is settled.
-	ExperimentalReplyShape string `json:"experimental_reply_shape,omitempty" jsonschema:"TEMPORARY experiment, leave unset: root_top, root or none"`
 }
 
 // SaveDraftOut is the save_draft result.
@@ -59,8 +56,6 @@ func (t *Tools) saveDraft(ctx context.Context, _ *mcp.CallToolRequest, in SaveDr
 		return nil, out, fmt.Errorf("text is %d characters; Telegram allows at most %d", utf8.RuneCountInString(in.Text), maxDraftRunes)
 	case in.TopicID < 0 || in.ReplyToMsgID < 0:
 		return nil, out, errors.New("topic_id and reply_to_msg_id must be positive")
-	case !validShape(in.ExperimentalReplyShape):
-		return nil, out, errors.New("experimental_reply_shape must be empty, root_top, root or none")
 	}
 
 	c, err := t.resolve(ctx, in.ChatID)
@@ -83,7 +78,7 @@ func (t *Tools) saveDraft(ctx context.Context, _ *mcp.CallToolRequest, in SaveDr
 	if topicTitle != "" {
 		out.Where += " › " + topicTitle
 	}
-	out.PreviousDraft = model.WithoutTopicRoot(model.DraftOf(cur), in.TopicID)
+	out.PreviousDraft = model.DraftOf(cur)
 	prev := out.PreviousDraft
 
 	// Decide whether this write may happen. Nothing below this block can
@@ -102,22 +97,8 @@ func (t *Tools) saveDraft(ctx context.Context, _ *mcp.CallToolRequest, in SaveDr
 		}
 	}
 
-	// An experimental shape may land in the chat's own draft slot instead of the
-	// topic's. Check that slot too, so the write is never to a place that was
-	// not looked at.
-	if in.TopicID > 1 && (in.ExperimentalReplyShape == "root" || in.ExperimentalReplyShape == "none") {
-		chatLevel, _, err := t.readDraft(ctx, c, 0)
-		if err != nil {
-			return nil, out, err
-		}
-		if d := model.DraftOf(chatLevel); d != nil && !in.Overwrite {
-			return nil, out, fmt.Errorf("%s has a chat-level draft (dated %s): %q. The experimental shape %q might replace it. Nothing was changed. "+
-				"Ask the user, or pass overwrite=true if they agree to lose it", c.Title, d.Date, d.Text, in.ExperimentalReplyShape)
-		}
-	}
-
 	req := &tg.MessagesSaveDraftRequest{Peer: c.Input, Message: in.Text}
-	if rt := replyTo(in.TopicID, in.ReplyToMsgID, in.ExperimentalReplyShape); rt != nil {
+	if rt := replyTo(in.TopicID, in.ReplyToMsgID); rt != nil {
 		req.SetReplyTo(rt)
 	}
 	if _, err := t.API.MessagesSaveDraft(ctx, req); err != nil {
@@ -130,8 +111,18 @@ func (t *Tools) saveDraft(ctx context.Context, _ *mcp.CallToolRequest, in SaveDr
 	if err != nil {
 		return nil, out, err
 	}
+	out.Draft = model.DraftOf(after)
+
+	// Never claim success the read-back does not confirm. A request Telegram
+	// accepted can still be stored somewhere other than where it was checked.
+	switch {
+	case in.Clear && out.Draft != nil:
+		return nil, out, fmt.Errorf("asked Telegram to delete the draft in %s but it is still there: %q. Tell the user it was not deleted", out.Where, out.Draft.Text)
+	case !in.Clear && (out.Draft == nil || out.Draft.Text != in.Text):
+		return nil, out, fmt.Errorf("Telegram accepted the draft but it did not appear in %s when read back, so it may have been stored somewhere else "+
+			"(for example as a chat-level draft). Do NOT tell the user it is saved there. Ask them to look in that chat, and to delete any stray draft", out.Where)
+	}
 	out.Saved = true
-	out.Draft = model.WithoutTopicRoot(model.DraftOf(after), in.TopicID)
 	if in.Clear {
 		out.Note = "Draft deleted from " + out.Where + "."
 	} else {
@@ -164,30 +155,24 @@ func checkMayReplace(prev *model.Draft, in SaveDraftIn, where string) error {
 
 // replyTo builds the draft's reply target.
 //
-// For a plain draft in a topic other than General the default is
-// reply_to_msg_id = topic and top_msg_id = topic. That is the only shape seen
-// live to land in the topic's own draft slot, where the read-before-write
-// check looks. The apps show it with a reply bar; the shape the official apps
-// really write is still being established. The sending rule from
-// core.telegram.org/api/forum (top_msg_id only for a reply to another message)
-// did NOT carry over to drafts: it saved without error but the draft appeared
-// in no topic.
+// A plain draft in a topic other than General is reply_to_msg_id = 0 with
+// top_msg_id = the topic id. That is exactly what the official app writes: read
+// back from drafts typed by hand in two topics, both held an InputReplyToMessage
+// with reply_to_msg_id 0 and top_msg_id set to the topic. Nothing is replied to,
+// which is why no reply bar is shown.
 //
-// The experimental shapes can land in a slot that is not checked, so saveDraft
-// reads the chat-level draft as well when one is used.
-func replyTo(topicID, replyToMsgID int, experiment string) tg.InputReplyToClass {
-	if topicID > 1 && replyToMsgID == 0 {
-		switch experiment {
-		case "root": // reply_to = topic, no top_msg_id
-			return &tg.InputReplyToMessage{ReplyToMsgID: topicID}
-		case "none": // no reply target at all
-			return nil
-		}
-		// "" and "root_top" fall through to the default below.
-	}
+// Two other shapes were tried live and are WRONG for drafts:
+//   - reply_to = topic and top_msg_id = topic: lands in the topic but displays as a
+//     reply to the topic's first message.
+//   - reply_to = topic with no top_msg_id (what the sending docs suggest): saved
+//     without error and then appeared in no topic.
+//
+// A real reply inside a topic sets both ids. Replying to the topic root is the
+// same as no reply.
+func replyTo(topicID, replyToMsgID int) tg.InputReplyToClass {
 	switch {
 	case topicID > 1:
-		rt := &tg.InputReplyToMessage{ReplyToMsgID: topicID}
+		rt := &tg.InputReplyToMessage{}
 		rt.SetTopMsgID(topicID)
 		if replyToMsgID != 0 && replyToMsgID != topicID {
 			rt.ReplyToMsgID = replyToMsgID
@@ -197,14 +182,6 @@ func replyTo(topicID, replyToMsgID int, experiment string) tg.InputReplyToClass 
 		return &tg.InputReplyToMessage{ReplyToMsgID: replyToMsgID}
 	}
 	return nil // a plain draft, or General
-}
-
-func validShape(s string) bool {
-	switch s {
-	case "", "root_top", "root", "none":
-		return true
-	}
-	return false
 }
 
 // readDraft returns the current draft and, for topics, the topic's title.

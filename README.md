@@ -1,6 +1,6 @@
 # telegram-go-mcp
 
-A small, auditable [MCP](https://modelcontextprotocol.io) server that lets an AI assistant **read your Telegram** and (planned) **save drafts**, and nothing else. You review and send every message yourself, in the official Telegram app.
+A small, auditable [MCP](https://modelcontextprotocol.io) server that lets an AI assistant **read your Telegram** and **save drafts**, and nothing else. You review and send every message yourself, in the official Telegram app.
 
 It replaces a third-party Python server that returned bare message text with no date or sender and could not reach forum topics.
 
@@ -10,7 +10,7 @@ It replaces a third-party Python server that returned bare message text with no 
 |---|---|
 | Read chats, with ids, dates, senders, unread counts | yes (`list_chats`) |
 | List a forum group's topics | yes (`list_topics`) |
-| Read messages, search | planned |
+| Read messages, reply threads, search one chat | yes (`read_messages`, `read_thread`, `search_messages`) |
 | Save a draft for you to send | yes (`save_draft`), see the caveat under Status |
 | Send, edit, delete, forward, mark as read, react, join, leave | **no, structurally** |
 
@@ -19,6 +19,8 @@ It replaces a third-party Python server that returned bare message text with no 
 ## Status
 
 Working and tested: `whoami`, `list_chats`, `list_topics`, `save_draft`, sign-in, the guard, and sharing one Telegram session between the several copies the desktop app starts.
+
+Message reading (`read_messages`, `read_thread`, `search_messages`) is tested offline only and has **not** been run against a real account yet.
 
 `save_draft` has been checked end to end against a real account: a draft saved to Saved Messages and one into a forum topic both appeared in the official app, and the topic draft is stored exactly as the app stores a hand-typed one (no message replied to, `top_msg_id` set to the topic), so it shows no reply bar. Replacing by compare-and-swap, overwriting and clearing were each run live, and refusals left the existing draft untouched. **Not yet checked live:** a draft in a forum's General topic, and a draft you are still typing on another device (the apps sync those after a delay).
 
@@ -128,6 +130,9 @@ Ask in plain language: *"What chats have unread messages?"*, *"Who am I signed i
 |---|---|---|
 | `whoami` | none | your id, name, username (never your phone number) |
 | `list_chats` | `limit` (1–100, default 30), `archived`, `cursor` | chats, newest activity first, plus `next_cursor` when more exist |
+| `read_messages` | `chat_id`, `topic_id`, `limit` (1–100, default 30), `before_id` | messages newest first, each with id, RFC3339 date, sender, topic, reply target, text, attachment type and a link; `next_before_id` pages back |
+| `read_thread` | `chat_id`, `message_id`, `limit`, `before_id` | the replies to one message, or the comments under a channel post |
+| `search_messages` | `chat_id`, `query`, `topic_id`, `limit`, `before_id` | matches in **one** chat, optionally one topic |
 | `list_topics` | `chat_id`, `limit` (1–100, default 50) | a forum group's topics with unread counts and each topic's current draft; topic 1 is General |
 | `save_draft` | `chat_id`, `text`, `topic_id`, `reply_to_msg_id`, `overwrite`, `expected_draft_date`, `clear` | where the draft was saved, the stored draft read back, and any draft it would have replaced |
 
@@ -154,9 +159,17 @@ Guards, all checked before anything is written:
 
 Caveat: the official apps push a draft you are still typing to Telegram only after a short delay, so a draft typed seconds ago may not be visible to the check yet. The compare-and-swap narrows that race but cannot close it.
 
-### Planned
+### Reading messages
 
-`read_messages`, `read_thread` (forum topics and channel comments), `search_messages`, `list_drafts`.
+Every message carries its id, an RFC3339 UTC date, the sender, the forum topic it belongs to (1 is General), what it replies to, its text and attachment type. A plain message in a topic is not reported as a reply to the topic's first message. Reading does not mark anything as read.
+
+Things worth knowing:
+
+- Messages come **newest first**. Pass `next_before_id` back as `before_id` for older ones. The cursor follows what Telegram returned, so topic filtering cannot make paging skip messages.
+- A forum topic is read as a message thread. **General** is the chat's messages that belong to no other topic, so it is read from the overall history and filtered; a page can hold fewer than `limit`. Neither has been checked against a real account yet.
+- Search covers one chat, not the whole account.
+- `link` is set only for messages of the channel being read. Comments on a channel post live in another chat and get none.
+- Message text is written by other people. The server tells the model to treat it as data, but that is a mitigation, not a guarantee, and a hostile message is the main way text could try to steer the assistant. The assistant still cannot send anything.
 
 ## One process owns the session
 

@@ -26,6 +26,7 @@ import (
 
 	"github.com/hisoft/telegram-go-mcp/internal/config"
 	"github.com/hisoft/telegram-go-mcp/internal/guard"
+	"github.com/hisoft/telegram-go-mcp/internal/instancelock"
 	"github.com/hisoft/telegram-go-mcp/internal/tgclient"
 )
 
@@ -59,6 +60,11 @@ func signIn(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	release, err := holdSession(p)
+	if err != nil {
+		return err
+	}
+	defer release()
 	tty, err := newTTYAuth()
 	if err != nil {
 		return err
@@ -93,6 +99,11 @@ func probe(ctx context.Context, idle time.Duration) error {
 	if err != nil {
 		return err
 	}
+	release, err := holdSession(p)
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	var seen, denied atomic.Int64
 	logger := config.NewAuditLogger(os.Stderr)
@@ -129,6 +140,21 @@ func probe(ctx context.Context, idle time.Duration) error {
 		fmt.Printf("RPCs through the guard while idle: %d (denied: %d)\n", seen.Load()-before, denied.Load())
 		return nil
 	})
+}
+
+// holdSession takes the same lock as the server. Signing in or probing while the
+// server is connected would put two live connections on one auth key, which
+// Telegram may answer by invalidating it.
+func holdSession(p config.Paths) (release func(), err error) {
+	l, err := instancelock.Acquire(p.LockFile)
+	if errors.Is(err, instancelock.ErrHeld) {
+		return nil, errors.New("telegram-mcp is already using this Telegram session (probably the desktop app).\n" +
+			"Quit it fully from the tray, then run this again.")
+	}
+	if err != nil {
+		return nil, err
+	}
+	return func() { _ = l.Release() }, nil
 }
 
 func whoami(ctx context.Context, c *tgclient.Client) (string, error) {

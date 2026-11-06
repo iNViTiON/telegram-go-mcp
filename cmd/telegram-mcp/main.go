@@ -13,7 +13,6 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -62,7 +61,7 @@ func run() error {
 	// One process per session: a second live connection can make Telegram
 	// invalidate the auth key. A copy that loses the race still serves MCP, so
 	// its tools can explain why they are disabled, but it never connects.
-	lock, lockErr := instancelock.Acquire(filepath.Join(p.StateDir, "lock"))
+	lock, lockErr := instancelock.Acquire(p.LockFile)
 	if lockErr != nil && !errors.Is(lockErr, instancelock.ErrHeld) {
 		return lockErr
 	}

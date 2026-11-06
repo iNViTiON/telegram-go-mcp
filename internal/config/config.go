@@ -25,6 +25,7 @@ type Paths struct {
 	StateDir        string // holds the session
 	CredentialsFile string
 	SessionFile     string
+	LockFile        string // held by whichever process owns the session
 }
 
 // DefaultPaths follows the XDG spec: $XDG_CONFIG_HOME (default ~/.config) and
@@ -43,6 +44,7 @@ func DefaultPaths() (Paths, error) {
 	}
 	p.CredentialsFile = filepath.Join(p.ConfigDir, "credentials")
 	p.SessionFile = filepath.Join(p.StateDir, "session.json")
+	p.LockFile = filepath.Join(p.StateDir, "lock")
 	return p, nil
 }
 

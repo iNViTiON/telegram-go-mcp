@@ -1,0 +1,17 @@
+# build output
+/telegram-mcp
+/telegram-mcp-login
+/bin/
+/dist/
+
+# secrets and session state — never commit
+credentials
+*.session
+session.json
+.env
+.env.*
+
+# editor / OS
+.idea/
+.vscode/
+.DS_Store

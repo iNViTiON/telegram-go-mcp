@@ -17,7 +17,7 @@ It replaces a third-party Python server that returned bare message text with no 
 
 ## Status
 
-Working and tested: `whoami`, `list_chats`, sign-in, the guard, the single-instance lock.
+Working and tested: `whoami`, `list_chats`, sign-in, the guard, and sharing one Telegram session between the several copies the desktop app starts.
 
 Not built yet: `save_draft` and the read tools below. **A draft actually appearing in the official app has not been verified yet**; that is the first thing the next phase proves.
 
@@ -142,9 +142,14 @@ Things worth knowing:
 
 ## One process owns the session
 
-Telegram can invalidate a login key that two live connections use at once, which forces a fresh sign-in. So the first `telegram-mcp` process takes a lock (`$XDG_STATE_HOME/telegram-go-mcp/lock`). A second copy still answers MCP, but its tools say *"Another telegram-mcp instance already holds the Telegram session"* and it never connects. `telegram-mcp-login` takes the same lock, so sign-in and `probe` refuse while the desktop app is running; quit it first.
+Telegram can invalidate a login key that two live connections use at once, which forces a fresh sign-in. Claude Desktop starts more than one copy of an MCP server (one for chat, one shared by Cowork and Code), so the copies cooperate:
 
-Known limitation: a copy that loses the lock stays disabled until it restarts. If the desktop app starts the server for more than one context (chat, Cowork/Code), a tool may work in one and report "disabled" in another. Fixing that needs either a retry on each call or a single daemon with thin shims; neither is built.
+- The first copy takes a lock (`$XDG_STATE_HOME/telegram-go-mcp/lock`) and becomes the **owner**. It is the only process that connects to Telegram. It also listens on a unix socket (`.../sock`, mode 0600 in the 0700 state directory, and it checks each peer's uid).
+- Every later copy is a **shim**. It builds no Telegram client. It copies its stdin and stdout to the owner's socket, where it becomes a full MCP session on the same server and the same guard. Every context gets working tools.
+- If the owner's own client quits, the owner keeps serving the others and exits 30 seconds after the last one disconnects.
+- `telegram-mcp-login` takes the same lock, so sign-in and `probe` refuse while the app is running. Quit it first.
+
+Limitation: if the owner process dies, shims connected to it exit with an error ("went away") and the app has to start them again; they do not take over. If a shim cannot reach an owner within 5 seconds it still answers MCP, but its tools report that another instance holds the session.
 
 The session file is written atomically, so several processes cannot leave a half-written file.
 
@@ -156,6 +161,7 @@ The session file is written atomically, so several processes cannot leave a half
 | `~/.local/state/telegram-go-mcp/` | state directory | 0700, enforced |
 | `~/.local/state/telegram-go-mcp/session.json` | Telegram login. **Treat like a password.** | 0600, enforced |
 | `~/.local/state/telegram-go-mcp/lock` | single-instance lock | 0600 |
+| `~/.local/state/telegram-go-mcp/sock` | the owner serves other copies here | 0600 |
 
 ## Troubleshooting
 
@@ -165,7 +171,8 @@ The session file is written atomically, so several processes cannot leave a half
 | `file permissions too open ... run: chmod 600 ...` | Do what it says. Group or world access is refused on purpose. |
 | `placeholder` error | The file still has `<id>` or `<hash>`. |
 | Tool says *not signed in or was revoked* | Run `./bin/telegram-mcp-login` again (quit the desktop app first). |
-| Tool says *another instance holds the session* | Another copy is connected. Use that one, or quit the app and restart. |
+| Tool says *another instance holds the session ... could not reach it* | This copy is a shim that found no working owner (the owner died, or its socket could not be created). Quit Claude Desktop fully from the tray and start it again. |
+| Shim exits with *went away* | The owner process died. The app should start the server again; if not, restart the app. |
 | Tool says *connection is not ready* | Retry in a few seconds; the first call after start-up waits up to 15 s for the connection. |
 | Server is not listed in the app | Check the app's MCP log for the `telegram` server. The first line names the credentials and session paths it resolved; if they differ from what you expect, the app's environment differs from your shell. |
 | The `telegram` entry vanished from the config | The app rewrote the file from memory. Add it again. |
@@ -174,7 +181,7 @@ The session file is written atomically, so several processes cannot leave a half
 
 The whole policy is [`internal/guard/guard.go`](internal/guard/guard.go) (about 150 lines). Every Telegram request passes `Allowed()`, and the default is deny. The server's policy allows 14 reads and one write, `messages.saveDraft`, which is text-only (no media, effect or suggested post). The sign-in policy allows only the login requests. There is no allowlisted request that sends, edits, deletes, forwards, or marks anything read.
 
-The single place a Telegram client is built is [`internal/tgclient/client.go`](internal/tgclient/client.go), with the guard first in the middleware chain.
+One guarded client serves every session, including relayed ones, so the shim path cannot widen what is allowed: a shim is a byte bridge that knows nothing about MCP. The single place a Telegram client is built is [`internal/tgclient/client.go`](internal/tgclient/client.go), with the guard first in the middleware chain.
 
 ```bash
 go test ./...
@@ -200,6 +207,7 @@ cmd/telegram-mcp-login/   sign-in and probe, run by you in a terminal
 internal/guard/           the allowlist
 internal/tgclient/        the only Telegram client constructor, atomic session storage
 internal/instancelock/    one process owns the session
+internal/relay/           the owner serves other copies; the shim bridge
 internal/config/          credentials, XDG paths, permission checks
 internal/tools/           MCP tools
 internal/model/           JSON shapes returned to the model

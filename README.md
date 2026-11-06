@@ -28,7 +28,7 @@ Linux only. The sign-in prompt and the instance lock use Linux-specific code, an
 
 ## Install
 
-You need Go 1.25.0 or newer (`go.mod` sets the floor). The binaries are fully static: no libc, no runtime dependencies, nothing resolved at start-up.
+You need Go 1.26.0 or newer (`go.mod` sets the floor). The binaries are fully static: no libc, no runtime dependencies, nothing resolved at start-up.
 
 ```bash
 git clone <this repo> ~/Documents/telegram-go-mcp
@@ -158,6 +158,8 @@ Guards, all checked before anything is written:
 - A draft in a topic is addressed the way the official app does it, found by reading drafts typed by hand: no message replied to, `top_msg_id` set to the topic. The two other shapes tried (topic id as the reply target, or the sending docs' rule) either showed a reply bar or were lost.
 
 Caveat: the official apps push a draft you are still typing to Telegram only after a short delay, so a draft typed seconds ago may not be visible to the check yet. The compare-and-swap narrows that race but cannot close it.
+
+Prompt injection: message text, chat titles and topic titles are written by other people, and the model reads them. The server marks them as data (titles are quoted in its own messages, and the instructions say to treat them as data), but it cannot stop a model that is fooled. What a fooled model can do is bounded by the guard: it can read, and it can save, replace (`overwrite=true`) or clear a draft. It still cannot send anything. So read a draft before you send it, and keep your client's approval prompt on for `save_draft` rather than allowing it always.
 
 ### Reading messages
 

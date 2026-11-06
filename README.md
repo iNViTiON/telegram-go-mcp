@@ -20,7 +20,7 @@ It replaces a third-party Python server that returned bare message text with no 
 
 Working and tested: `whoami`, `list_chats`, `list_topics`, `save_draft`, sign-in, the guard, and sharing one Telegram session between the several copies the desktop app starts.
 
-Not built yet: reading messages and search. **Until you have seen a saved draft appear in your own Telegram app, treat `save_draft` as unverified.** The tests prove what requests are sent and what is refused; only the real app proves where Telegram shows the draft.
+`save_draft` has been checked end to end against a real account: a draft saved to Saved Messages and one into a forum topic both appeared in the official app, and the topic draft is stored exactly as the app stores a hand-typed one (no message replied to, `top_msg_id` set to the topic), so it shows no reply bar. Replacing by compare-and-swap, overwriting and clearing were each run live, and refusals left the existing draft untouched. **Not yet checked live:** a draft in a forum's General topic, and a draft you are still typing on another device (the apps sync those after a delay).
 
 Linux only. The sign-in prompt and the instance lock use Linux-specific code, and the project does not build on macOS or Windows.
 

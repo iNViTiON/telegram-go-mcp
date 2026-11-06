@@ -298,45 +298,39 @@ func TestReplyInsideATopicSetsBothIds(t *testing.T) {
 	}
 }
 
-func TestListDraftsShowsStoredShapeVerbatim(t *testing.T) {
-	root := &tg.InputReplyToMessage{ReplyToMsgID: 4367}
-	root.SetTopMsgID(4367)
-	inTopic := &tg.DraftMessage{Message: "in a topic", Date: 1700000100}
-	inTopic.SetReplyTo(root)
-
-	s := &stub{
-		dialogs: func(*tg.MessagesGetDialogsRequest) tg.MessagesDialogsClass { return dialogsFixture() },
-		allDrafts: &tg.Updates{
-			Chats: []tg.ChatClass{&tg.Channel{ID: 100, AccessHash: 22, Title: "Dev Group", Forum: true}},
-			Updates: []tg.UpdateClass{
-				func() tg.UpdateClass {
-					u := &tg.UpdateDraftMessage{Peer: &tg.PeerChannel{ChannelID: 100}, Draft: inTopic}
-					u.SetTopMsgID(4367)
-					return u
-				}(),
-				&tg.UpdateDraftMessage{Peer: &tg.PeerUser{UserID: 1}, Draft: &tg.DraftMessage{Message: "plain", Date: 1700000200}},
-				&tg.UpdateDraftMessage{Peer: &tg.PeerUser{UserID: 1}, Draft: &tg.DraftMessageEmpty{}}, // no text: skipped
-				&tg.UpdateNewMessage{}, // not a draft: skipped
-			},
+// TEMPORARY: covers the experiment switch until the official shape is settled.
+func TestExperimentalReplyShapes(t *testing.T) {
+	want := map[string]func(*testing.T, *tg.MessagesSaveDraftRequest){
+		"root_top": func(t *testing.T, r *tg.MessagesSaveDraftRequest) {
+			rt := r.ReplyTo.(*tg.InputReplyToMessage)
+			if top, has := rt.GetTopMsgID(); rt.ReplyToMsgID != 5 || !has || top != 5 {
+				t.Errorf("root_top: %+v", rt)
+			}
+		},
+		"root": func(t *testing.T, r *tg.MessagesSaveDraftRequest) {
+			rt := r.ReplyTo.(*tg.InputReplyToMessage)
+			if _, has := rt.GetTopMsgID(); rt.ReplyToMsgID != 5 || has {
+				t.Errorf("root: %+v", rt)
+			}
+		},
+		"none": func(t *testing.T, r *tg.MessagesSaveDraftRequest) {
+			if _, has := r.GetReplyTo(); has {
+				t.Errorf("none must send no reply target: %+v", r.ReplyTo)
+			}
 		},
 	}
-	h := newHarness(t, s, nil)
-	out := decode[ListDraftsOut](t, h.call(t, "list_drafts", map[string]any{}))
+	for shape, check := range want {
+		h, s := learned(t)
+		h.call(t, "save_draft", saveArgs("chat_id", "channel:100", "topic_id", 5, "text", "x", "experimental_reply_shape", shape))
+		if len(s.saves) != 1 {
+			t.Fatalf("%s: saveDraft calls = %d", shape, len(s.saves))
+		}
+		check(t, s.saves[0])
+	}
 
-	if seq(h) != "messages.getAllDrafts" {
-		t.Errorf("list_drafts issued %s", seq(h))
-	}
-	if len(out.Drafts) != 2 {
-		t.Fatalf("got %+v", out.Drafts)
-	}
-	d := out.Drafts[0]
-	if d.ChatID != "channel:100" || d.Chat != "Dev Group" || d.TopicID != 4367 || d.Draft.Text != "in a topic" {
-		t.Errorf("topic draft entry wrong: %+v", d)
-	}
-	if d.Draft.ReplyToMsgID != 4367 || d.Draft.ReplyToTopID != 4367 {
-		t.Errorf("reply fields must be shown exactly as stored, got reply_to=%d top=%d", d.Draft.ReplyToMsgID, d.Draft.ReplyToTopID)
-	}
-	if p := out.Drafts[1]; p.ChatID != "user:1" || p.TopicID != 0 || p.Draft.Text != "plain" {
-		t.Errorf("plain draft entry wrong: %+v", p)
+	h, s := learned(t)
+	res := h.call(t, "save_draft", saveArgs("chat_id", "me", "text", "x", "experimental_reply_shape", "bogus"))
+	if !res.IsError || len(s.saves) != 0 {
+		t.Error("an unknown shape must be refused before any write")
 	}
 }

@@ -74,6 +74,20 @@ func CheckPrivate(path string) error {
 	return nil
 }
 
+// Setup resolves paths, loads credentials and prepares the state directory. It
+// is the single startup path for both binaries.
+func Setup() (Paths, Credentials, error) {
+	p, err := DefaultPaths()
+	if err != nil {
+		return p, Credentials{}, err
+	}
+	creds, err := LoadCredentials(p.CredentialsFile)
+	if err != nil {
+		return p, Credentials{}, err
+	}
+	return p, creds, EnsureStateDir(p)
+}
+
 // LoadCredentials reads KEY=VALUE lines (# comments allowed). Error messages
 // name keys and line numbers, never values.
 func LoadCredentials(path string) (Credentials, error) {

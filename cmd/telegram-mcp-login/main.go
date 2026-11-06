@@ -54,21 +54,8 @@ func run(args []string) error {
 	return signIn(ctx)
 }
 
-// setup loads credentials and prepares the state directory.
-func setup() (config.Paths, config.Credentials, error) {
-	p, err := config.DefaultPaths()
-	if err != nil {
-		return p, config.Credentials{}, err
-	}
-	creds, err := config.LoadCredentials(p.CredentialsFile)
-	if err != nil {
-		return p, creds, err
-	}
-	return p, creds, config.EnsureStateDir(p)
-}
-
 func signIn(ctx context.Context) error {
-	p, creds, err := setup()
+	p, creds, err := config.Setup()
 	if err != nil {
 		return err
 	}
@@ -102,7 +89,7 @@ func signIn(ctx context.Context) error {
 }
 
 func probe(ctx context.Context, idle time.Duration) error {
-	p, creds, err := setup()
+	p, creds, err := config.Setup()
 	if err != nil {
 		return err
 	}

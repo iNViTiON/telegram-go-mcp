@@ -84,15 +84,16 @@ func TestSaveDraftIntoAForumTopic(t *testing.T) {
 	if out.Where != "Dev Group › Frontend" {
 		t.Errorf("where = %q, want the chat and topic titles so the user knows where to look", out.Where)
 	}
-	// A plain draft in a topic addresses it with reply_to_msg_id = topic id and
-	// NO top_msg_id. Setting top_msg_id too makes the apps show it as a reply to
-	// the topic's first message (seen live).
+	// The default is reply_to = topic and top_msg_id = topic: the only shape
+	// seen live to land in the topic's own draft slot. Dropping top_msg_id (what
+	// the sending docs suggest) saved without error but the draft appeared in no
+	// topic, and the read-before-write check could not have seen it.
 	rt, ok := s.saves[0].ReplyTo.(*tg.InputReplyToMessage)
 	if !ok {
 		t.Fatalf("topic draft needs a reply target, got %T", s.saves[0].ReplyTo)
 	}
-	if _, hasTop := rt.GetTopMsgID(); rt.ReplyToMsgID != 5 || hasTop {
-		t.Errorf("topic draft shape: reply_to=%d top_msg_id set=%v, want reply_to=5 and no top_msg_id", rt.ReplyToMsgID, hasTop)
+	if top, hasTop := rt.GetTopMsgID(); rt.ReplyToMsgID != 5 || !hasTop || top != 5 {
+		t.Errorf("topic draft shape: reply_to=%d top=%d(set=%v), want both 5", rt.ReplyToMsgID, top, hasTop)
 	}
 	if out.Draft == nil || out.Draft.Text != "ship it" {
 		t.Fatalf("read-back draft wrong: %+v", out.Draft)
@@ -288,13 +289,13 @@ func TestReplyInsideATopicSetsBothIds(t *testing.T) {
 		t.Errorf("a real reply must be reported as one: %+v", out.Draft)
 	}
 
-	// Replying to the topic root is the same as no reply: no top_msg_id.
+	// Replying to the topic root is the same as no reply: the default shape.
 	h, s = learned(t)
 	decode[SaveDraftOut](t, h.call(t, "save_draft",
 		saveArgs("chat_id", "channel:100", "topic_id", 5, "reply_to_msg_id", 5, "text", "x")))
 	rt = s.saves[0].ReplyTo.(*tg.InputReplyToMessage)
-	if _, has := rt.GetTopMsgID(); has || rt.ReplyToMsgID != 5 {
-		t.Errorf("reply to the topic root must not set top_msg_id: %+v", rt)
+	if top, has := rt.GetTopMsgID(); !has || top != 5 || rt.ReplyToMsgID != 5 {
+		t.Errorf("reply to the topic root is a plain topic draft: %+v", rt)
 	}
 }
 
@@ -332,5 +333,39 @@ func TestExperimentalReplyShapes(t *testing.T) {
 	res := h.call(t, "save_draft", saveArgs("chat_id", "me", "text", "x", "experimental_reply_shape", "bogus"))
 	if !res.IsError || len(s.saves) != 0 {
 		t.Error("an unknown shape must be refused before any write")
+	}
+}
+
+// Review finding: an experimental shape can write to the chat's own draft slot,
+// while the existing check looked only at the topic's slot, so it could replace a
+// draft nobody had looked at. Every shape that may land there must read it first.
+func TestExperimentalShapesCheckTheChatLevelDraft(t *testing.T) {
+	for _, shape := range []string{"none", "root"} {
+		h, s := learned(t)
+		chatDraft := s.seed(&tg.InputPeerChannel{ChannelID: 100}, 0, "typing at chat level")
+
+		res := h.call(t, "save_draft", saveArgs("chat_id", "channel:100", "topic_id", 5, "text", "x", "experimental_reply_shape", shape))
+		if !res.IsError || !strings.Contains(text(res), "typing at chat level") {
+			t.Errorf("%s: want a refusal showing the chat-level draft, got %q", shape, text(res))
+		}
+		if len(s.saves) != 0 || s.drafts[draftKey(&tg.InputPeerChannel{ChannelID: 100}, 0)] != chatDraft {
+			t.Errorf("%s: the chat-level draft was touched (saves=%d)", shape, len(s.saves))
+		}
+
+		// With explicit permission it may proceed.
+		h, s = learned(t)
+		s.seed(&tg.InputPeerChannel{ChannelID: 100}, 0, "typing at chat level")
+		decode[SaveDraftOut](t, h.call(t, "save_draft",
+			saveArgs("chat_id", "channel:100", "topic_id", 5, "text", "x", "experimental_reply_shape", shape, "overwrite", true)))
+		if len(s.saves) != 1 {
+			t.Errorf("%s with overwrite: saves=%d", shape, len(s.saves))
+		}
+	}
+
+	// The default shape is known to land in the topic slot and needs no extra read.
+	h, _ := learned(t)
+	decode[SaveDraftOut](t, h.call(t, "save_draft", saveArgs("chat_id", "channel:100", "topic_id", 5, "text", "x")))
+	if got := countRPC(h, rpcPeerDialogs); got != 0 {
+		t.Errorf("default shape should not read the chat-level draft, issued getPeerDialogs %d times", got)
 	}
 }

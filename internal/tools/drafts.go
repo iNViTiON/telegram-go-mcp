@@ -102,6 +102,20 @@ func (t *Tools) saveDraft(ctx context.Context, _ *mcp.CallToolRequest, in SaveDr
 		}
 	}
 
+	// An experimental shape may land in the chat's own draft slot instead of the
+	// topic's. Check that slot too, so the write is never to a place that was
+	// not looked at.
+	if in.TopicID > 1 && (in.ExperimentalReplyShape == "root" || in.ExperimentalReplyShape == "none") {
+		chatLevel, _, err := t.readDraft(ctx, c, 0)
+		if err != nil {
+			return nil, out, err
+		}
+		if d := model.DraftOf(chatLevel); d != nil && !in.Overwrite {
+			return nil, out, fmt.Errorf("%s has a chat-level draft (dated %s): %q. The experimental shape %q might replace it. Nothing was changed. "+
+				"Ask the user, or pass overwrite=true if they agree to lose it", c.Title, d.Date, d.Text, in.ExperimentalReplyShape)
+		}
+	}
+
 	req := &tg.MessagesSaveDraftRequest{Peer: c.Input, Message: in.Text}
 	if rt := replyTo(in.TopicID, in.ReplyToMsgID, in.ExperimentalReplyShape); rt != nil {
 		req.SetReplyTo(rt)
@@ -148,30 +162,35 @@ func checkMayReplace(prev *model.Draft, in SaveDraftIn, where string) error {
 		"or with overwrite=true if they agree to lose it", where, prev.Date, prev.Text, prev.Date)
 }
 
-// replyTo builds the draft's reply target. In a topic other than General the
-// topic is addressed by passing its id as reply_to_msg_id.
+// replyTo builds the draft's reply target.
+//
+// For a plain draft in a topic other than General the default is
+// reply_to_msg_id = topic and top_msg_id = topic. That is the only shape seen
+// live to land in the topic's own draft slot, where the read-before-write
+// check looks. The apps show it with a reply bar; the shape the official apps
+// really write is still being established. The sending rule from
+// core.telegram.org/api/forum (top_msg_id only for a reply to another message)
+// did NOT carry over to drafts: it saved without error but the draft appeared
+// in no topic.
+//
+// The experimental shapes can land in a slot that is not checked, so saveDraft
+// reads the chat-level draft as well when one is used.
 func replyTo(topicID, replyToMsgID int, experiment string) tg.InputReplyToClass {
 	if topicID > 1 && replyToMsgID == 0 {
 		switch experiment {
-		case "root_top": // reply_to = topic, top_msg_id = topic
-			rt := &tg.InputReplyToMessage{ReplyToMsgID: topicID}
-			rt.SetTopMsgID(topicID)
-			return rt
 		case "root": // reply_to = topic, no top_msg_id
 			return &tg.InputReplyToMessage{ReplyToMsgID: topicID}
 		case "none": // no reply target at all
 			return nil
 		}
+		// "" and "root_top" fall through to the default below.
 	}
 	switch {
 	case topicID > 1:
 		rt := &tg.InputReplyToMessage{ReplyToMsgID: topicID}
-		// top_msg_id is set if and only if replying to a message other than the
-		// topic's root (core.telegram.org/api/forum). Setting it for a plain
-		// draft makes the apps show a reply to the first message.
+		rt.SetTopMsgID(topicID)
 		if replyToMsgID != 0 && replyToMsgID != topicID {
 			rt.ReplyToMsgID = replyToMsgID
-			rt.SetTopMsgID(topicID)
 		}
 		return rt
 	case replyToMsgID != 0:

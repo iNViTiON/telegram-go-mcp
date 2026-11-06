@@ -10,7 +10,6 @@ import (
 	"context"
 
 	"github.com/gotd/td/bin"
-	"github.com/gotd/td/session"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/tg"
 
@@ -48,7 +47,7 @@ func New(cfg Config) *Client {
 			guard.Middleware(cfg.Policy, cfg.Audit), // first: denials are never retried
 		},
 		NoUpdates:         true, // no updates manager: zero RPCs through the chain on connect
-		SessionStorage:    &session.FileStorage{Path: cfg.SessionPath},
+		SessionStorage:    &atomicStorage{path: cfg.SessionPath},
 		OnConnectionState: st.onConnectionState,
 		Device: telegram.DeviceConfig{
 			DeviceModel: "telegram-go-mcp",

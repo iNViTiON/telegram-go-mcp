@@ -1,6 +1,11 @@
 package model
 
-import "github.com/gotd/td/tg"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/gotd/td/tg"
+)
 
 // Draft is the text waiting in a chat's or topic's compose box.
 type Draft struct {
@@ -13,6 +18,9 @@ type Draft struct {
 	// shown so the exact stored shape can be compared with what the official
 	// apps write.
 	ReplyToTopID int `json:"reply_to_top_id,omitempty"`
+	// ReplyToKind names the reply constructor Telegram stored, e.g.
+	// "InputReplyToMessage". Empty when the draft has no reply target.
+	ReplyToKind string `json:"reply_to_kind,omitempty"`
 }
 
 // DraftOf returns nil when there is no draft with text in it.
@@ -23,6 +31,7 @@ func DraftOf(d tg.DraftMessageClass) *Draft {
 	}
 	out := &Draft{Text: m.Message, Date: RFC3339(m.Date)}
 	if rt, ok := m.GetReplyTo(); ok {
+		out.ReplyToKind = strings.TrimPrefix(fmt.Sprintf("%T", rt), "*tg.")
 		if r, ok := rt.(*tg.InputReplyToMessage); ok {
 			out.ReplyToMsgID = r.ReplyToMsgID
 			if top, ok := r.GetTopMsgID(); ok {
@@ -68,6 +77,6 @@ func TopicOf(t *tg.ForumTopic) Topic {
 		Unread:         t.UnreadCount,
 		UnreadMentions: t.UnreadMentionsCount,
 		TopMessage:     t.TopMessage,
-		Draft:          WithoutTopicRoot(DraftOf(t.Draft), t.ID),
+		Draft:          DraftOf(t.Draft), // raw: do not tidy the reply fields while the stored shape is being worked out
 	}
 }

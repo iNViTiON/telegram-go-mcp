@@ -32,7 +32,6 @@ type stub struct {
 	topicTitles map[int]string
 	forumTopics []tg.ForumTopicClass
 	resolved    *tg.ContactsResolvedPeer
-	allDrafts   tg.UpdatesClass
 	saves       []*tg.MessagesSaveDraftRequest
 	date        int
 }
@@ -108,11 +107,6 @@ func (s *stub) Invoke(_ context.Context, in bin.Encoder, out bin.Decoder) error 
 	case *tg.MessagesGetForumTopicsRequest:
 		*out.(*tg.MessagesForumTopics) = tg.MessagesForumTopics{Count: len(s.forumTopics) + 40, Topics: s.forumTopics}
 		return nil
-	case *tg.MessagesGetAllDraftsRequest:
-		if s.allDrafts != nil {
-			out.(*tg.UpdatesBox).Updates = s.allDrafts
-			return nil
-		}
 	case *tg.ContactsResolveUsernameRequest:
 		if s.resolved != nil {
 			*out.(*tg.ContactsResolvedPeer) = *s.resolved
@@ -234,7 +228,7 @@ func TestToolSurface(t *testing.T) {
 		}
 	}
 	sort.Strings(names)
-	if got, want := strings.Join(names, ","), "list_chats,list_drafts,list_topics,save_draft,whoami"; got != want {
+	if got, want := strings.Join(names, ","), "list_chats,list_topics,save_draft,whoami"; got != want {
 		t.Fatalf("tools = %s, want %s", got, want)
 	}
 	// Exactly one tool may be non-read-only, and it must be the draft saver.
@@ -252,7 +246,6 @@ func TestEachToolIssuesOnlyItsRPCs(t *testing.T) {
 	}{
 		{"whoami", []string{"users.getUsers"}},
 		{"list_chats", []string{"messages.getDialogs"}},
-		{"list_drafts", []string{"messages.getAllDrafts"}},
 	}
 	for _, c := range cases {
 		h := newHarness(t, &stub{}, nil) // stub answers errStub: the tool errors, which is fine here

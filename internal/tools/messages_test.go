@@ -429,3 +429,35 @@ func TestReadThreadInAForumExplainsInsteadOfFailing(t *testing.T) {
 		t.Errorf("a non-forum chat should get the generic message, got %q", text(res))
 	}
 }
+
+// Seen live: in a one-to-one chat or a basic group, getReplies answers
+// PEER_ID_INVALID. That does not mean "no access"; those chats simply have no
+// reply threads, which only supergroups and channels do. The generic message
+// ("no access, use list_chats") sent the model on a pointless search.
+func TestReadThreadExplainsChatsThatHaveNoThreads(t *testing.T) {
+	for _, chatID := range []string{"user:1", "me"} {
+		h, s := learned(t)
+		s.repliesErr = tgerr.New(400, "PEER_ID_INVALID")
+
+		res := h.call(t, "read_thread", map[string]any{"chat_id": chatID, "message_id": 5})
+		if !res.IsError {
+			t.Fatalf("%s: want an error", chatID)
+		}
+		for _, want := range []string{"no reply threads", "supergroups and channels", "read_messages"} {
+			if !strings.Contains(text(res), want) {
+				t.Errorf("%s: should mention %q: %q", chatID, want, text(res))
+			}
+		}
+		if strings.Contains(text(res), "No access") || strings.Contains(text(res), "list_chats") {
+			t.Errorf("%s: must not claim a missing access: %q", chatID, text(res))
+		}
+	}
+
+	// A channel keeps the generic message: there it really can mean no access.
+	h, s := learned(t)
+	s.repliesErr = tgerr.New(400, "PEER_ID_INVALID")
+	res := h.call(t, "read_thread", map[string]any{"chat_id": "channel:100", "message_id": 5})
+	if !res.IsError || !strings.Contains(text(res), "No access") {
+		t.Errorf("a channel should keep the generic message, got %q", text(res))
+	}
+}

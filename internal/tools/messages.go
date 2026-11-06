@@ -134,6 +134,12 @@ func (t *Tools) readThread(ctx context.Context, _ *mcp.CallToolRequest, in ReadT
 			return nil, out, fmt.Errorf("%s is a forum: its messages have no reply threads, only topics are threads. "+
 				"Use read_messages with topic_id to read a topic, and a message's reply_to_msg_id to see what it answers", c.Title)
 		}
+		// Seen live: a one-to-one chat or a basic group answers PEER_ID_INVALID,
+		// which here means "no reply threads", not "no access".
+		if tgerr.Is(err, "PEER_ID_INVALID") && !strings.HasPrefix(c.Key, "channel:") {
+			return nil, out, fmt.Errorf("%s has no reply threads: they exist only in supergroups and channels, not in one-to-one chats or basic groups. "+
+				"Use read_messages, and a message's reply_to_msg_id to see what it answers", c.Title)
+		}
 		return nil, out, tgerrs.Error(err)
 	}
 	return nil, t.convert(out, c, res, limit, false), nil

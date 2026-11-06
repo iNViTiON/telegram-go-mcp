@@ -148,7 +148,6 @@ func allowedLogin(input bin.Encoder) bool {
 		*tg.AuthSignInRequest,
 		*tg.AuthCheckPasswordRequest,
 		*tg.AccountGetPasswordRequest,
-		*tg.AuthLogOutRequest,    // only reachable via an explicit logout subcommand
 		*tg.UsersGetUsersRequest: // auth status check
 		return true
 	}

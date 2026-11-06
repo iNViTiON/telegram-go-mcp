@@ -45,7 +45,6 @@ var wantLogin = map[string]bool{
 	"AuthSignInRequest":         true,
 	"AuthCheckPasswordRequest":  true,
 	"AccountGetPasswordRequest": true,
-	"AuthLogOutRequest":         true,
 	"UsersGetUsersRequest":      true,
 }
 

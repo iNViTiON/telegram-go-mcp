@@ -21,6 +21,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gotd/td/telegram/auth"
 	"github.com/gotd/td/tg"
 
 	"github.com/hisoft/telegram-go-mcp/internal/config"
@@ -161,6 +162,9 @@ func whoami(ctx context.Context, c *tgclient.Client) (string, error) {
 }
 
 func explain(err error) error {
+	if auth.IsUnauthorized(err) {
+		return errors.New("not signed in: run telegram-mcp-login (no arguments) first")
+	}
 	if errors.Is(err, guard.ErrDenied) {
 		return fmt.Errorf("%w\nthe guard blocked an RPC Telegram needs; this is the signal to review guard.go, not to disable the guard", err)
 	}

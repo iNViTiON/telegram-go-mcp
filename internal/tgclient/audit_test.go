@@ -165,7 +165,12 @@ func TestClientOptionsAreGuarded(t *testing.T) {
 	t.Fatal("internal/tgclient/client.go not found")
 }
 
-func TestServerBinaryDoesNotImportAuth(t *testing.T) {
+// authEntryPoints are tgclient methods that reach auth.* RPCs. They are fine in
+// the login binary and forbidden in the server binary. The guard also denies
+// them at runtime under PolicyRead; this test keeps the intent visible.
+var authEntryPoints = map[string]bool{"SignIn": true, "Auth": true}
+
+func TestServerBinaryDoesNotUseAuth(t *testing.T) {
 	for _, sf := range loadModule(t) {
 		if !strings.HasPrefix(sf.rel, "cmd/telegram-mcp/") {
 			continue
@@ -173,5 +178,11 @@ func TestServerBinaryDoesNotImportAuth(t *testing.T) {
 		if _, bad := sf.imports[pathAuth]; bad {
 			t.Errorf("%s imports %s; auth RPCs must stay out of the server binary", sf.rel, pathAuth)
 		}
+		ast.Inspect(sf.file, func(n ast.Node) bool {
+			if sel, ok := n.(*ast.SelectorExpr); ok && authEntryPoints[sel.Sel.Name] {
+				t.Errorf("%s: .%s reaches auth RPCs; only cmd/telegram-mcp-login may use it", sf.rel, sel.Sel.Name)
+			}
+			return true
+		})
 	}
 }

@@ -278,3 +278,14 @@ func TestReadPolicyHasNoAuth(t *testing.T) {
 		}
 	}
 }
+
+func TestAuthDeniedThroughRealReadClient(t *testing.T) {
+	c := newReadClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	_, err := c.API().AuthSendCode(ctx, &tg.AuthSendCodeRequest{PhoneNumber: "+10000000000", APIID: 1, APIHash: "x"})
+	if !errors.Is(err, guard.ErrDenied) {
+		t.Fatalf("server client must not be able to start a login, got %v", err)
+	}
+}

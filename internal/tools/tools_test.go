@@ -250,9 +250,15 @@ func TestListChatsShapeAndPagination(t *testing.T) {
 	if out.NextCursor == "" {
 		t.Fatal("a full page of a slice result must offer a next_cursor")
 	}
+	if s.lastReq.ExcludePinned {
+		t.Error("the first page must include pinned chats")
+	}
 	// Second page: the request must carry offsets derived from the LAST dialog.
 	decode[ListChatsOut](t, h.call(t, "list_chats", map[string]any{"limit": 2, "cursor": out.NextCursor}))
 	r := s.lastReq
+	if !r.ExcludePinned {
+		t.Error("later pages must set exclude_pinned: Telegram otherwise repeats pinned chats (seen live)")
+	}
 	peer, ok := r.OffsetPeer.(*tg.InputPeerUser)
 	if r.OffsetID != 20 || r.OffsetDate != 1700000100 || !ok || peer.UserID != 1 || peer.AccessHash != 777 {
 		t.Fatalf("offsets not taken from the last dialog: %+v peer=%+v", r, r.OffsetPeer)

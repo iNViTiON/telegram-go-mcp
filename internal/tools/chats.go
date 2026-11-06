@@ -54,6 +54,7 @@ func (t *Tools) listChats(ctx context.Context, _ *mcp.CallToolRequest, in ListCh
 			return nil, out, err
 		}
 		req.OffsetDate, req.OffsetID, req.OffsetPeer = c.Date, c.ID, c.inputPeer()
+		req.ExcludePinned = true // otherwise Telegram repeats pinned chats on every page
 	}
 
 	res, err := t.API.MessagesGetDialogs(ctx, req)

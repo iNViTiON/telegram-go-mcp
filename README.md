@@ -8,18 +8,19 @@ It replaces a third-party Python server that returned bare message text with no 
 
 | | |
 |---|---|
-| Read chats, with ids, dates, senders, unread counts | yes (`list_chats` today) |
-| Read messages, forum topics, search | planned |
-| Save a draft for you to send | planned |
+| Read chats, with ids, dates, senders, unread counts | yes (`list_chats`) |
+| List a forum group's topics | yes (`list_topics`) |
+| Read messages, search | planned |
+| Save a draft for you to send | yes (`save_draft`), see the caveat under Status |
 | Send, edit, delete, forward, mark as read, react, join, leave | **no, structurally** |
 
 "Structurally" means the program contains an allowlist of Telegram requests and refuses everything else before it reaches the network. You can verify that by reading one file. See [Auditing the safety claim](#auditing-the-safety-claim).
 
 ## Status
 
-Working and tested: `whoami`, `list_chats`, sign-in, the guard, and sharing one Telegram session between the several copies the desktop app starts.
+Working and tested: `whoami`, `list_chats`, `list_topics`, `save_draft`, sign-in, the guard, and sharing one Telegram session between the several copies the desktop app starts.
 
-Not built yet: `save_draft` and the read tools below. **A draft actually appearing in the official app has not been verified yet**; that is the first thing the next phase proves.
+Not built yet: reading messages and search. **Until you have seen a saved draft appear in your own Telegram app, treat `save_draft` as unverified.** The tests prove what requests are sent and what is refused; only the real app proves where Telegram shows the draft.
 
 Linux only. The sign-in prompt and the instance lock use Linux-specific code, and the project does not build on macOS or Windows.
 
@@ -127,6 +128,8 @@ Ask in plain language: *"What chats have unread messages?"*, *"Who am I signed i
 |---|---|---|
 | `whoami` | none | your id, name, username (never your phone number) |
 | `list_chats` | `limit` (1–100, default 30), `archived`, `cursor` | chats, newest activity first, plus `next_cursor` when more exist |
+| `list_topics` | `chat_id`, `limit` (1–100, default 50) | a forum group's topics with unread counts and each topic's current draft; topic 1 is General |
+| `save_draft` | `chat_id`, `text`, `topic_id`, `reply_to_msg_id`, `overwrite`, `expected_draft_date`, `clear` | where the draft was saved, the stored draft read back, and any draft it would have replaced |
 
 Each chat has a kind-prefixed `id` (`user:1`, `chat:2`, `channel:3`), `kind` (`user`, `bot`, `group`, `supergroup`, `channel`), `title`, `username`, unread counts, and its last message with an RFC3339 UTC date, sender and a snippet capped at 200 characters. `forum: true` marks supergroups that have topics.
 
@@ -136,9 +139,23 @@ Things worth knowing:
 - Pass `next_cursor` back as `cursor` to continue. It is opaque; do not edit it.
 - Chat titles and message text are written by other people. The server tells the model to treat them as data, not instructions. Treat that as a mitigation, not a guarantee.
 
+### Drafts
+
+`save_draft` only stores text in the compose box. It never sends: the draft is visible to you, and you review and send it from the Telegram app. `chat_id` is `me` (Saved Messages), `@username`, or an id from `list_chats` such as `channel:123`. A kind-prefixed id must have been seen in `list_chats` or `list_topics` in this server's lifetime, because Telegram needs the chat's access hash.
+
+Guards, all checked before anything is written:
+
+- A forum group needs `topic_id`; the server never guesses a placement.
+- If the chat or topic already has a draft, the call is **refused** and shows you the existing text. Replace it only with `overwrite=true`, or with `expected_draft_date` set to the date of the draft that was seen, which refuses if it changed since.
+- Empty text deletes a draft, so it needs `clear=true` and the same permission to replace.
+- Text over 4096 characters is refused.
+- After saving, the draft is read back and returned together with where to look, e.g. `Dev Group › Frontend`.
+
+Caveat: the official apps push a draft you are still typing to Telegram only after a short delay, so a draft typed seconds ago may not be visible to the check yet. The compare-and-swap narrows that race but cannot close it.
+
 ### Planned
 
-`list_topics`, `read_messages`, `read_thread` (forum topics and channel comments), `search_messages`, `list_drafts`, and `save_draft`. Drafts will refuse to overwrite one you have already started unless the call says so, and clearing a draft will need an explicit flag.
+`read_messages`, `read_thread` (forum topics and channel comments), `search_messages`, `list_drafts`.
 
 ## One process owns the session
 
@@ -210,6 +227,7 @@ internal/instancelock/    one process owns the session
 internal/relay/           the owner serves other copies; the shim bridge
 internal/config/          credentials, XDG paths, permission checks
 internal/tools/           MCP tools
+internal/peercache/       access hashes learned from list_chats / list_topics
 internal/model/           JSON shapes returned to the model
 internal/tgerrs/          Telegram errors rewritten for the model
 ```

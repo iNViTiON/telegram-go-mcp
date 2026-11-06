@@ -19,11 +19,59 @@ import (
 
 var errStub = errors.New("stub transport: no canned answer")
 
-// stub is the "network": it records what reaches it and answers from canned data.
+// stub is the "network": it records what reaches it and answers from canned
+// data. Drafts are stateful, keyed by chat and topic, so read-back, conflicts
+// and compare-and-swap behave like the real thing.
 type stub struct {
 	dialogs func(*tg.MessagesGetDialogsRequest) tg.MessagesDialogsClass
 	users   []tg.UserClass
 	lastReq *tg.MessagesGetDialogsRequest
+
+	drafts      map[string]*tg.DraftMessage
+	topicTitles map[int]string
+	forumTopics []tg.ForumTopicClass
+	resolved    *tg.ContactsResolvedPeer
+	saves       []*tg.MessagesSaveDraftRequest
+	date        int
+}
+
+func peerKey(p tg.InputPeerClass) string {
+	switch p := p.(type) {
+	case *tg.InputPeerSelf:
+		return "self"
+	case *tg.InputPeerUser:
+		return fmt.Sprintf("user:%d", p.UserID)
+	case *tg.InputPeerChannel:
+		return fmt.Sprintf("channel:%d", p.ChannelID)
+	case *tg.InputPeerChat:
+		return fmt.Sprintf("chat:%d", p.ChatID)
+	}
+	return "?"
+}
+
+// General (topic 1) and a plain chat share one draft slot, as assumed in drafts.go.
+func draftKey(p tg.InputPeerClass, topic int) string {
+	if topic == 1 {
+		topic = 0
+	}
+	return fmt.Sprintf("%s/%d", peerKey(p), topic)
+}
+
+func (s *stub) seed(p tg.InputPeerClass, topic int, text string) *tg.DraftMessage {
+	if s.drafts == nil {
+		s.drafts = map[string]*tg.DraftMessage{}
+	}
+	s.date += 10
+	d := &tg.DraftMessage{Message: text, Date: 1700000000 + s.date}
+	s.drafts[draftKey(p, topic)] = d
+	return d
+}
+
+func (s *stub) draftFor(p tg.InputPeerClass, topic int) tg.DraftMessageClass {
+	if d := s.drafts[draftKey(p, topic)]; d != nil {
+		return d
+	}
+	return nil // a true nil interface, not a typed nil
 }
 
 func (s *stub) Invoke(_ context.Context, in bin.Encoder, out bin.Decoder) error {
@@ -39,6 +87,48 @@ func (s *stub) Invoke(_ context.Context, in bin.Encoder, out bin.Decoder) error 
 			out.(*tg.UserClassVector).Elems = s.users
 			return nil
 		}
+	case *tg.MessagesGetPeerDialogsRequest:
+		p := r.Peers[0].(*tg.InputDialogPeer).Peer
+		*out.(*tg.MessagesPeerDialogs) = tg.MessagesPeerDialogs{
+			Dialogs: []tg.DialogClass{&tg.Dialog{Peer: &tg.PeerUser{UserID: 1}, Draft: s.draftFor(p, 0)}},
+		}
+		return nil
+	case *tg.MessagesGetForumTopicsByIDRequest:
+		id := r.Topics[0]
+		title := s.topicTitles[id]
+		if title == "" {
+			title = fmt.Sprintf("Topic %d", id)
+		}
+		*out.(*tg.MessagesForumTopics) = tg.MessagesForumTopics{
+			Topics: []tg.ForumTopicClass{&tg.ForumTopic{ID: id, Title: title, Draft: s.draftFor(r.Peer, id)}},
+		}
+		return nil
+	case *tg.MessagesGetForumTopicsRequest:
+		*out.(*tg.MessagesForumTopics) = tg.MessagesForumTopics{Count: len(s.forumTopics) + 40, Topics: s.forumTopics}
+		return nil
+	case *tg.ContactsResolveUsernameRequest:
+		if s.resolved != nil {
+			*out.(*tg.ContactsResolvedPeer) = *s.resolved
+			return nil
+		}
+	case *tg.MessagesSaveDraftRequest:
+		s.saves = append(s.saves, r)
+		topic := 0
+		if rt, ok := r.ReplyTo.(*tg.InputReplyToMessage); ok {
+			if top, ok := rt.GetTopMsgID(); ok {
+				topic = top
+			}
+		}
+		if s.drafts == nil {
+			s.drafts = map[string]*tg.DraftMessage{}
+		}
+		if r.Message == "" {
+			delete(s.drafts, draftKey(r.Peer, topic))
+		} else {
+			s.seed(r.Peer, topic, r.Message)
+		}
+		out.(*tg.BoolBox).Bool = &tg.BoolTrue{}
+		return nil
 	}
 	return errStub
 }
@@ -121,16 +211,20 @@ func TestToolSurface(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var names []string
+	var names, writers []string
 	for _, tool := range res.Tools {
 		names = append(names, tool.Name)
 		if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
-			t.Errorf("%s must be annotated read-only", tool.Name)
+			writers = append(writers, tool.Name)
 		}
 	}
 	sort.Strings(names)
-	if got, want := strings.Join(names, ","), "list_chats,whoami"; got != want {
+	if got, want := strings.Join(names, ","), "list_chats,list_topics,save_draft,whoami"; got != want {
 		t.Fatalf("tools = %s, want %s", got, want)
+	}
+	// Exactly one tool may be non-read-only, and it must be the draft saver.
+	if len(writers) != 1 || writers[0] != "save_draft" {
+		t.Fatalf("non-read-only tools = %v, want exactly [save_draft]", writers)
 	}
 }
 

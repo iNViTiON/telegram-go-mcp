@@ -76,6 +76,8 @@ func (t *Tools) listChats(ctx context.Context, _ *mcp.CallToolRequest, in ListCh
 		return nil, out, nil
 	}
 
+	t.peers.Learn(ents)
+
 	var last *tg.Dialog
 	for _, d := range dialogs {
 		if d, ok := d.(*tg.Dialog); ok { // skip archive-folder entries

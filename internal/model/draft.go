@@ -26,6 +26,17 @@ func DraftOf(d tg.DraftMessageClass) *Draft {
 	return out
 }
 
+// WithoutTopicRoot clears a reply target that is just the topic's own id. In a
+// forum that is how a draft is addressed to a topic, not a reply to anything.
+func WithoutTopicRoot(d *Draft, topicID int) *Draft {
+	if d != nil && topicID > 1 && d.ReplyToMsgID == topicID {
+		c := *d
+		c.ReplyToMsgID = 0
+		return &c
+	}
+	return d
+}
+
 // Topic is one forum topic.
 type Topic struct {
 	ID             int    `json:"id"` // 1 is General
@@ -50,6 +61,6 @@ func TopicOf(t *tg.ForumTopic) Topic {
 		Unread:         t.UnreadCount,
 		UnreadMentions: t.UnreadMentionsCount,
 		TopMessage:     t.TopMessage,
-		Draft:          DraftOf(t.Draft),
+		Draft:          WithoutTopicRoot(DraftOf(t.Draft), t.ID),
 	}
 }

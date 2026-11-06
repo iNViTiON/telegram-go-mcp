@@ -78,7 +78,7 @@ func (t *Tools) saveDraft(ctx context.Context, _ *mcp.CallToolRequest, in SaveDr
 	if topicTitle != "" {
 		out.Where += " › " + topicTitle
 	}
-	out.PreviousDraft = model.DraftOf(cur)
+	out.PreviousDraft = model.WithoutTopicRoot(model.DraftOf(cur), in.TopicID)
 	prev := out.PreviousDraft
 
 	// Decide whether this write may happen. Nothing below this block can
@@ -112,7 +112,7 @@ func (t *Tools) saveDraft(ctx context.Context, _ *mcp.CallToolRequest, in SaveDr
 		return nil, out, err
 	}
 	out.Saved = true
-	out.Draft = model.DraftOf(after)
+	out.Draft = model.WithoutTopicRoot(model.DraftOf(after), in.TopicID)
 	if in.Clear {
 		out.Note = "Draft deleted from " + out.Where + "."
 	} else {
@@ -143,17 +143,19 @@ func checkMayReplace(prev *model.Draft, in SaveDraftIn, where string) error {
 		"or with overwrite=true if they agree to lose it", where, prev.Date, prev.Text, prev.Date)
 }
 
-// replyTo builds the draft's reply target. A draft in a topic other than
-// General is addressed by replying to the topic's root message; the topic root
-// is also what the official apps use when nothing more specific is chosen.
+// replyTo builds the draft's reply target. In a topic other than General the
+// topic is addressed by passing its id as reply_to_msg_id.
 func replyTo(topicID, replyToMsgID int) tg.InputReplyToClass {
 	switch {
 	case topicID > 1:
 		rt := &tg.InputReplyToMessage{ReplyToMsgID: topicID}
-		if replyToMsgID != 0 {
+		// top_msg_id is set if and only if replying to a message other than the
+		// topic's root (core.telegram.org/api/forum). Setting it for a plain
+		// draft makes the apps show a reply to the first message.
+		if replyToMsgID != 0 && replyToMsgID != topicID {
 			rt.ReplyToMsgID = replyToMsgID
+			rt.SetTopMsgID(topicID)
 		}
-		rt.SetTopMsgID(topicID)
 		return rt
 	case replyToMsgID != 0:
 		return &tg.InputReplyToMessage{ReplyToMsgID: replyToMsgID}

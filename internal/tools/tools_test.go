@@ -27,6 +27,7 @@ type stub struct {
 	users   []tg.UserClass
 	lastReq *tg.MessagesGetDialogsRequest
 
+	forumPeers  map[string]bool // peers that are forum supergroups
 	drafts      map[string]*tg.DraftMessage
 	topicTitles map[int]string
 	forumTopics []tg.ForumTopicClass
@@ -113,10 +114,15 @@ func (s *stub) Invoke(_ context.Context, in bin.Encoder, out bin.Decoder) error 
 		}
 	case *tg.MessagesSaveDraftRequest:
 		s.saves = append(s.saves, r)
+		// Per core.telegram.org/api/forum: in a forum, reply_to_msg_id alone
+		// addresses that topic; top_msg_id is only set for a reply to some other
+		// message inside a topic.
 		topic := 0
 		if rt, ok := r.ReplyTo.(*tg.InputReplyToMessage); ok {
 			if top, ok := rt.GetTopMsgID(); ok {
 				topic = top
+			} else if s.forumPeers[peerKey(r.Peer)] {
+				topic = rt.ReplyToMsgID
 			}
 		}
 		if s.drafts == nil {
@@ -125,7 +131,10 @@ func (s *stub) Invoke(_ context.Context, in bin.Encoder, out bin.Decoder) error 
 		if r.Message == "" {
 			delete(s.drafts, draftKey(r.Peer, topic))
 		} else {
-			s.seed(r.Peer, topic, r.Message)
+			d := s.seed(r.Peer, topic, r.Message)
+			if rt, ok := r.GetReplyTo(); ok {
+				d.SetReplyTo(rt) // Telegram stores the reply target with the draft
+			}
 		}
 		out.(*tg.BoolBox).Bool = &tg.BoolTrue{}
 		return nil

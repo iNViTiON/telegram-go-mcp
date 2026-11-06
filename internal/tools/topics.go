@@ -26,7 +26,7 @@ type ListTopicsIn struct {
 // ListTopicsOut is the list_topics result.
 type ListTopicsOut struct {
 	Chat   string        `json:"chat"`
-	Count  int           `json:"count"` // total topics in the chat, which can exceed len(topics)
+	Count  int           `json:"count"` // Telegram's reported total; it does not always equal len(topics)
 	Topics []model.Topic `json:"topics"`
 }
 

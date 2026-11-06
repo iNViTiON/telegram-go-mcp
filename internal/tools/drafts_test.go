@@ -31,7 +31,10 @@ func countRPC(h *harness, name string) int {
 // (user:1 and the forum supergroup channel:100), as after a list_chats call.
 func learned(t *testing.T) (*harness, *stub) {
 	t.Helper()
-	s := &stub{dialogs: func(*tg.MessagesGetDialogsRequest) tg.MessagesDialogsClass { return dialogsFixture() }}
+	s := &stub{
+		dialogs:    func(*tg.MessagesGetDialogsRequest) tg.MessagesDialogsClass { return dialogsFixture() },
+		forumPeers: map[string]bool{"channel:100": true},
+	}
 	h := newHarness(t, s, nil)
 	decode[ListChatsOut](t, h.call(t, "list_chats", map[string]any{}))
 	h.audit = nil
@@ -81,15 +84,21 @@ func TestSaveDraftIntoAForumTopic(t *testing.T) {
 	if out.Where != "Dev Group › Frontend" {
 		t.Errorf("where = %q, want the chat and topic titles so the user knows where to look", out.Where)
 	}
+	// A plain draft in a topic addresses it with reply_to_msg_id = topic id and
+	// NO top_msg_id. Setting top_msg_id too makes the apps show it as a reply to
+	// the topic's first message (seen live).
 	rt, ok := s.saves[0].ReplyTo.(*tg.InputReplyToMessage)
 	if !ok {
 		t.Fatalf("topic draft needs a reply target, got %T", s.saves[0].ReplyTo)
 	}
-	if top, _ := rt.GetTopMsgID(); rt.ReplyToMsgID != 5 || top != 5 {
-		t.Errorf("topic draft shape: reply_to=%d top=%d, want both 5", rt.ReplyToMsgID, top)
+	if _, hasTop := rt.GetTopMsgID(); rt.ReplyToMsgID != 5 || hasTop {
+		t.Errorf("topic draft shape: reply_to=%d top_msg_id set=%v, want reply_to=5 and no top_msg_id", rt.ReplyToMsgID, hasTop)
 	}
 	if out.Draft == nil || out.Draft.Text != "ship it" {
-		t.Errorf("read-back draft wrong: %+v", out.Draft)
+		t.Fatalf("read-back draft wrong: %+v", out.Draft)
+	}
+	if out.Draft.ReplyToMsgID != 0 {
+		t.Errorf("the topic root is not a reply; the draft must not report reply_to_msg_id=%d", out.Draft.ReplyToMsgID)
 	}
 }
 
@@ -263,5 +272,28 @@ func TestListTopicsRefusesNonForumChats(t *testing.T) {
 	}
 	if len(h.audit) != 0 {
 		t.Errorf("a non-forum chat must not reach Telegram: %v", h.audit)
+	}
+}
+
+func TestReplyInsideATopicSetsBothIds(t *testing.T) {
+	h, s := learned(t)
+	out := decode[SaveDraftOut](t, h.call(t, "save_draft",
+		saveArgs("chat_id", "channel:100", "topic_id", 5, "reply_to_msg_id", 77, "text", "answer")))
+
+	rt := s.saves[0].ReplyTo.(*tg.InputReplyToMessage)
+	if top, has := rt.GetTopMsgID(); rt.ReplyToMsgID != 77 || !has || top != 5 {
+		t.Errorf("a reply inside topic 5 needs reply_to=77 and top_msg_id=5, got reply_to=%d top=%d(set=%v)", rt.ReplyToMsgID, top, has)
+	}
+	if out.Draft == nil || out.Draft.ReplyToMsgID != 77 {
+		t.Errorf("a real reply must be reported as one: %+v", out.Draft)
+	}
+
+	// Replying to the topic root is the same as no reply: no top_msg_id.
+	h, s = learned(t)
+	decode[SaveDraftOut](t, h.call(t, "save_draft",
+		saveArgs("chat_id", "channel:100", "topic_id", 5, "reply_to_msg_id", 5, "text", "x")))
+	rt = s.saves[0].ReplyTo.(*tg.InputReplyToMessage)
+	if _, has := rt.GetTopMsgID(); has || rt.ReplyToMsgID != 5 {
+		t.Errorf("reply to the topic root must not set top_msg_id: %+v", rt)
 	}
 }
